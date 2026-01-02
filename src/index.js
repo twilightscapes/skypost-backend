@@ -152,20 +152,62 @@ app.post('/api/licenses/verify', (req, res) => {
   }
 });
 
-// Create Stripe checkout session
-app.post('/api/subscriptions/create-checkout', (req, res) => {
+// Check if device has Pro license
+app.post('/api/licenses/check-device', (req, res) => {
   try {
-    const { licenseKey, success_url, cancel_url } = req.body;
+    const { deviceId } = req.body;
 
-    if (!licenseKey) {
-      return res.status(400).json({ error: 'License key required' });
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Device ID required' });
     }
 
     const db = readDatabase();
-    const license = db.licenses.find(l => l.key === licenseKey);
+    const license = db.licenses.find(l => l.device_id === deviceId);
 
     if (!license) {
-      return res.status(404).json({ error: 'License not found' });
+      return res.json({ isPro: false, tier: 'free' });
+    }
+
+    const isPro = license.tier === 'pro' && license.status === 'active';
+    const isExpired = isPro && new Date(license.expires_at) < new Date();
+
+    res.json({
+      isPro: isPro && !isExpired,
+      tier: license.tier,
+      license_key: license.key,
+      expires_at: license.expires_at
+    });
+  } catch (error) {
+    console.error('Device check error:', error);
+    res.status(500).json({ error: 'Device check failed' });
+  }
+});
+
+// Create Stripe checkout session
+app.post('/api/subscriptions/create-checkout', (req, res) => {
+  try {
+    const { deviceId, success_url, cancel_url } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Device ID required' });
+    }
+
+    const db = readDatabase();
+    let license = db.licenses.find(l => l.device_id === deviceId);
+
+    // Create license if it doesn't exist
+    if (!license) {
+      const newLicense = {
+        id: require('crypto').randomUUID(),
+        device_id: deviceId,
+        key: 'SKY-' + Math.random().toString(36).substr(2, 8).toUpperCase(),
+        tier: 'free',
+        created_at: new Date().toISOString(),
+        expires_at: null
+      };
+      db.licenses.push(newLicense);
+      writeDatabase(db);
+      license = newLicense;
     }
 
     const session = stripe.checkout.sessions.create({
@@ -179,14 +221,14 @@ app.post('/api/subscriptions/create-checkout', (req, res) => {
       mode: 'payment',
       success_url: success_url || 'https://skypost.app/pro/success',
       cancel_url: cancel_url || 'https://skypost.app/pro/cancel',
-      client_reference_id: licenseKey,
+      client_reference_id: license.key,
       metadata: {
-        license_key: licenseKey,
-        user_id: license.user_id
+        license_key: license.key,
+        device_id: deviceId
       }
     });
 
-    res.json({ session_id: session.id, session_url: session.url });
+    res.json({ session_id: session.id, sessionUrl: session.url });
   } catch (error) {
     console.error('Checkout error:', error);
     res.status(500).json({ error: 'Checkout creation failed' });
@@ -207,11 +249,11 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res)
     if (event.type === 'charge.succeeded') {
       const charge = event.data.object;
       const licenseKey = charge.metadata?.license_key;
-      const userId = charge.metadata?.user_id;
+      const deviceId = charge.metadata?.device_id;
 
-      if (licenseKey) {
+      if (licenseKey && deviceId) {
         const db = readDatabase();
-        const license = db.licenses.find(l => l.key === licenseKey);
+        const license = db.licenses.find(l => l.key === licenseKey && l.device_id === deviceId);
 
         if (license) {
           license.tier = 'pro';
@@ -223,7 +265,7 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res)
         db.payments.push({
           id: uuidv4(),
           license_key: licenseKey,
-          user_id: userId,
+          device_id: deviceId,
           amount: charge.amount,
           currency: charge.currency,
           stripe_charge_id: charge.id,
