@@ -652,6 +652,16 @@ app.post('/api/licenses/check', (req, res) => {
       return res.json({ valid: false, isPro: false, tier: 'free' });
     }
 
+    // If license is pending but we're checking it (user is trying to activate), activate it now
+    if (license.status === 'pending') {
+      license.status = 'active';
+      license.tier = 'pro';
+      license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+      license.activated_at = new Date().toISOString();
+      writeDatabase(db);
+      console.log(`✅ License ${licenseKey} auto-activated on check`);
+    }
+
     const isActive = license.status === 'active' && license.tier === 'pro';
     const isExpired = isActive && license.expires_at && new Date(license.expires_at) < new Date();
 
