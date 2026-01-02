@@ -575,7 +575,6 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
         }
       ],
       mode: 'subscription',
-      customer_email: licenseEmail,
       success_url: `https://skypost-license-backend.onrender.com/pro/success?license_key=${licenseKey}`,
       cancel_url: 'https://skypost-license-backend.onrender.com/pro/cancel',
       client_reference_id: licenseKey,
