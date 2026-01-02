@@ -760,8 +760,8 @@ app.post('/api/licenses/check', async (req, res) => {
 console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
 console.log('📍 About to call app.listen()...');
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`🚀 SkyPost License Backend running on 0.0.0.0:${PORT}`);
+const server = app.listen(PORT, '127.0.0.1', () => {
+  console.log(`🚀 SkyPost License Backend running on 127.0.0.1:${PORT}`);
   console.log('📊 Configuration Check:');
   console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_PRICE_ID:', process.env.STRIPE_PRICE_ID ? '✅ Loaded' : '❌ MISSING');
