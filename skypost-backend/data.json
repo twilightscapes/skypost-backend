@@ -1,0 +1,14 @@
+{
+  "users": [],
+  "licenses": [
+    {
+      "id": "5e8fe8bc-e985-457a-992c-a9d0b8b9830c",
+      "device_id": "test-device-123",
+      "key": "SKY-ZX2AYFJS",
+      "tier": "free",
+      "created_at": "2026-01-02T04:11:03.235Z",
+      "expires_at": null
+    }
+  ],
+  "payments": []
+}
