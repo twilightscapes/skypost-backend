@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const nodemailer = require('nodemailer');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -47,6 +48,66 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// Email configuration with nodemailer
+const emailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER || 'your-email@gmail.com',
+    pass: process.env.EMAIL_PASSWORD || 'your-app-password'
+  }
+});
+
+// Send license email
+async function sendLicenseEmail(email, licenseKey) {
+  try {
+    const htmlContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #333;">Welcome to SkyPost Pro!</h2>
+        <p>Thank you for upgrading to SkyPost Pro. Your license has been activated.</p>
+        
+        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
+          <p><strong>Your License Key:</strong></p>
+          <p style="font-size: 18px; font-family: monospace; color: #0066cc; word-break: break-all;">${licenseKey}</p>
+        </div>
+        
+        <h3>How to Activate:</h3>
+        <ol>
+          <li>Open the SkyPost extension</li>
+          <li>Go to Settings → License</li>
+          <li>Click "Activate License"</li>
+          <li>Paste your license key above</li>
+          <li>Click "Verify License"</li>
+        </ol>
+        
+        <h3>Pro Features:</h3>
+        <ul>
+          <li>Unlimited notes</li>
+          <li>Advanced formatting</li>
+          <li>Priority support</li>
+          <li>Works on all devices with your license key</li>
+        </ul>
+        
+        <p style="color: #666; font-size: 12px; margin-top: 30px;">
+          If you have any questions, please contact support@skypost.io
+        </p>
+      </div>
+    `;
+    
+    await emailTransporter.sendMail({
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: '🎉 Your SkyPost Pro License Key',
+      html: htmlContent
+    });
+    
+    console.log(`✅ License email sent to ${email}`);
+    return true;
+  } catch (error) {
+    console.error(`❌ Failed to send license email to ${email}:`, error.message);
+    return false;
+  }
+}
+
 // Stripe webhook needs raw body for signature verification - MUST come BEFORE json parsing
 app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
   const sig = req.headers['stripe-signature'];
@@ -58,6 +119,36 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res)
       process.env.STRIPE_WEBHOOK_SECRET
     );
 
+    // Handle successful charge (payment completed)
+    if (event.type === 'charge.succeeded') {
+      const charge = event.data.object;
+      const customerId = charge.customer;
+      
+      // Find the license with this pending status
+      const db = readDatabase();
+      let license = null;
+      
+      // Try to find by Stripe customer ID first
+      license = db.licenses.find(l => l.stripe_customer_id === customerId && l.status === 'pending');
+      
+      if (license) {
+        const email = license.email || charge.billing_details?.email;
+        
+        if (email) {
+          license.status = 'active';
+          license.tier = 'pro';
+          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+          license.activated_at = new Date().toISOString();
+          writeDatabase(db);
+          
+          // Send license email
+          await sendLicenseEmail(email, license.key);
+          console.log(`✅ License activated: ${license.key} for ${email}`);
+        }
+      }
+    }
+
+    // Legacy: Handle checkout.session.completed (old flow)
     if (event.type === 'checkout.session.completed') {
       const session = event.data.object;
       const licenseKey = session.metadata?.license_key;
@@ -213,33 +304,37 @@ app.post('/api/licenses/check-device', (req, res) => {
   }
 });
 
-// Create Stripe checkout session
+// Create Stripe checkout session (updated for email-based licensing)
 app.post('/api/subscriptions/create-checkout', async (req, res) => {
   try {
-    const { deviceId, success_url, cancel_url } = req.body;
+    const { deviceId, email, success_url, cancel_url } = req.body;
 
-    if (!deviceId) {
-      return res.status(400).json({ error: 'Device ID required' });
+    if (!deviceId && !email) {
+      return res.status(400).json({ error: 'Device ID or email required' });
     }
 
     const db = readDatabase();
-    let license = db.licenses.find(l => l.device_id === deviceId);
+    
+    // Generate new license key upfront
+    const licenseKey = `SKY-${uuidv4().toString().replace(/-/g, '').substr(0, 12).toUpperCase()}`;
+    
+    // Create new pending license record
+    const newLicense = {
+      id: uuidv4(),
+      key: licenseKey,
+      email: email || null,
+      device_id: deviceId || null,
+      tier: 'free',
+      status: 'pending',
+      stripe_customer_id: null,
+      created_at: new Date().toISOString(),
+      expires_at: null
+    };
+    
+    db.licenses.push(newLicense);
+    writeDatabase(db);
 
-    // Create license if it doesn't exist
-    if (!license) {
-      const newLicense = {
-        id: require('crypto').randomUUID(),
-        device_id: deviceId,
-        key: 'SKY-' + Math.random().toString(36).substr(2, 8).toUpperCase(),
-        tier: 'free',
-        created_at: new Date().toISOString(),
-        expires_at: null
-      };
-      db.licenses.push(newLicense);
-      writeDatabase(db);
-      license = newLicense;
-    }
-
+    // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -249,16 +344,28 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
         }
       ],
       mode: 'subscription',
+      customer_email: email || undefined,
       success_url: success_url || 'https://skypost.app/pro/success',
       cancel_url: cancel_url || 'https://skypost.app/pro/cancel',
-      client_reference_id: license.key,
+      client_reference_id: licenseKey,
       metadata: {
-        license_key: license.key,
-        device_id: deviceId
+        license_key: licenseKey,
+        device_id: deviceId || 'multi-device',
+        email: email || 'not-provided'
       }
     });
 
-    res.json({ session_id: session.id, sessionUrl: session.url });
+    // Update license with Stripe customer ID for webhook matching
+    newLicense.stripe_session_id = session.id;
+    writeDatabase(db);
+
+    console.log(`📝 Created checkout session for license: ${licenseKey} (${email || deviceId})`);
+    
+    res.json({ 
+      session_id: session.id, 
+      sessionUrl: session.url,
+      license_key: licenseKey 
+    });
   } catch (error) {
     console.error('❌ Checkout error:', error.message || error);
     console.error('Stack:', error.stack);
@@ -299,6 +406,40 @@ app.post('/api/subscriptions/check-license', (req, res) => {
   }
 });
 
+// NEW: Check license by key (email-based system)
+app.post('/api/licenses/check', (req, res) => {
+  try {
+    const { licenseKey } = req.body;
+
+    if (!licenseKey) {
+      return res.status(400).json({ error: 'License key required' });
+    }
+
+    const db = readDatabase();
+    const license = db.licenses.find(l => l.key === licenseKey);
+
+    if (!license) {
+      return res.json({ valid: false, isPro: false, tier: 'free' });
+    }
+
+    const isActive = license.status === 'active' && license.tier === 'pro';
+    const isExpired = isActive && license.expires_at && new Date(license.expires_at) < new Date();
+
+    res.json({
+      valid: true,
+      isPro: isActive && !isExpired,
+      tier: license.tier,
+      status: license.status,
+      email: license.email,
+      expiresAt: license.expires_at,
+      activatedAt: license.activated_at
+    });
+  } catch (error) {
+    console.error('License key check error:', error);
+    res.status(500).json({ error: 'License check failed' });
+  }
+});
+
 // Start server
 initializeDatabase();
 app.listen(PORT, () => {
@@ -307,4 +448,6 @@ app.listen(PORT, () => {
   console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_PRICE_ID:', process.env.STRIPE_PRICE_ID ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_WEBHOOK_SECRET:', process.env.STRIPE_WEBHOOK_SECRET ? '✅ Loaded' : '❌ MISSING');
+  console.log('  EMAIL_USER:', process.env.EMAIL_USER ? '✅ Loaded' : '❌ MISSING');
+  console.log('  EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? '✅ Loaded' : '❌ MISSING');
 });
