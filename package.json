@@ -1,0 +1,21 @@
+{
+  "name": "skypost-license-backend",
+  "version": "1.0.0",
+  "description": "SkyPost Pro License and Payment Backend",
+  "main": "src/index-simple.js",
+  "scripts": {
+    "start": "node src/index-simple.js",
+    "dev": "node src/index-simple.js"
+  },
+  "keywords": ["skypost", "license", "stripe"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "stripe": "^14.7.0",
+    "sqlite3": "^5.1.6",
+    "uuid": "^9.0.1"
+  }
+}
