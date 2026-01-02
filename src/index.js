@@ -15,11 +15,10 @@ const nodemailer = require('nodemailer');
 const { Pool } = require('pg');
 
 const app = express();
-// Railway sets PORT to 8080 in environment, but if target port in Railway dashboard
-// is set to 3000, we need to listen on 3000 instead
-const PORT = 3000;
+// Use PORT from environment, default to 3000
+const PORT = process.env.PORT || 3000;
 
-console.log('🔧 Listening on port 3000 (Railway target port)');
+console.log('🔧 Listening on port:', PORT);
 
 // PostgreSQL connection (from DATABASE_URL on Render)
 let pool = null;
