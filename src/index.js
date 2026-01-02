@@ -150,8 +150,9 @@ app.use(express.json());
 
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
-  console.log('Health check hit');
-  return res.json({ status: 'ok' });
+  console.log('Health check hit - sending response');
+  res.status(200).send('OK');
+  console.log('Health check response sent');
 });
 
 // Test endpoint
