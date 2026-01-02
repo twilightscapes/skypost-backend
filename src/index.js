@@ -20,24 +20,31 @@ function initializeDatabase() {
     try {
       pool = new Pool({
         connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false } // Render requires SSL
+        ssl: { rejectUnauthorized: false } // Railway requires SSL
       });
       
       console.log('✅ Connected to PostgreSQL database');
       
-      // Initialize tables
-      pool.query(`
-        CREATE TABLE IF NOT EXISTS licenses (
-          id SERIAL PRIMARY KEY,
-          key VARCHAR(50) UNIQUE NOT NULL,
-          email VARCHAR(255),
-          status VARCHAR(50) DEFAULT 'pending',
-          tier VARCHAR(50) DEFAULT 'free',
-          expires_at TIMESTAMP,
-          activated_at TIMESTAMP,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `).catch(err => console.error('Error creating licenses table:', err));
+      // Initialize tables asynchronously
+      (async () => {
+        try {
+          const result = await pool.query(`
+            CREATE TABLE IF NOT EXISTS licenses (
+              id SERIAL PRIMARY KEY,
+              key VARCHAR(50) UNIQUE NOT NULL,
+              email VARCHAR(255),
+              status VARCHAR(50) DEFAULT 'pending',
+              tier VARCHAR(50) DEFAULT 'free',
+              expires_at TIMESTAMP,
+              activated_at TIMESTAMP,
+              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+          console.log('✅ Licenses table initialized');
+        } catch (err) {
+          console.error('❌ Error creating licenses table:', err.message);
+        }
+      })();
       
       return;
     } catch (err) {
