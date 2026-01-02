@@ -25,8 +25,35 @@ let pool = null;
 let useFileStorage = false;
 
 function initializeDatabase() {
-  console.log('⚠️  Skipping database init for debugging');
-  useFileStorage = true;
+  if (!process.env.DATABASE_URL) {
+    console.log('⚠️  No DATABASE_URL, using file-based storage');
+    useFileStorage = true;
+    return;
+  }
+
+  console.log('🔧 Initializing PostgreSQL database...');
+  pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+  });
+
+  pool.query(`
+    CREATE TABLE IF NOT EXISTS licenses (
+      id SERIAL PRIMARY KEY,
+      key VARCHAR(255) UNIQUE NOT NULL,
+      email VARCHAR(255),
+      status VARCHAR(50) DEFAULT 'pending',
+      tier VARCHAR(50) DEFAULT 'free',
+      expires_at TIMESTAMP,
+      activated_at TIMESTAMP,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `, (err) => {
+    if (err) {
+      console.error('Error creating table:', err);
+    } else {
+      console.log('✅ Licenses table ready');
+    }
+  });
 }
 
 // Database helper functions
