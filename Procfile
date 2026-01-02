@@ -1,1 +1,1 @@
-web: node src/index.js
+web: exec node src/index.js

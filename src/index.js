@@ -762,6 +762,22 @@ app.post('/api/licenses/check', async (req, res) => {
   }
 });
 
+// ALSO: Start a raw HTTP server on port 9000 for testing
+const http = require('http');
+const testServer = http.createServer((req, res) => {
+  if (req.url === '/test-health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ raw: 'http', ok: true }));
+  } else {
+    res.writeHead(404);
+    res.end('Not found');
+  }
+});
+
+testServer.listen(9000, () => {
+  console.log('🟠 Raw HTTP server listening on port 9000');
+});
+
 // Start server
 console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
