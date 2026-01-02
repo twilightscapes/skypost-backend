@@ -145,15 +145,13 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Body parsing - TEMPORARILY DISABLED FOR TESTING
-// app.use(express.json());
+// Re-enable JSON parsing
+app.use(express.json());
 
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
-  res.setHeader('Connection', 'close');
-  res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.write('OK');
-  res.end();
+  res.setHeader('Content-Type', 'application/json');
+  res.status(200).json({ status: 'ok' });
 });
 
 // Test endpoint
@@ -810,8 +808,8 @@ app.post('/api/licenses/check', async (req, res) => {
 console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
 console.log('📍 About to call app.listen()...');
-app.listen(PORT, () => {
-  console.log(`🚀 SkyPost License Backend running on port ${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 SkyPost License Backend running on 0.0.0.0:${PORT}`);
   console.log('📊 Configuration Check:');
   console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_PRICE_ID:', process.env.STRIPE_PRICE_ID ? '✅ Loaded' : '❌ MISSING');
