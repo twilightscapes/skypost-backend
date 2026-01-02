@@ -801,19 +801,6 @@ app.post('/api/licenses/check', async (req, res) => {
   }
 });
 
-// Global error handler
-app.use((err, req, res, next) => {
-  console.error(`\n❌ [ERROR] ${err.message}`);
-  console.error('Stack:', err.stack);
-  res.status(500).json({ error: 'Internal server error', details: err.message });
-});
-
-// 404 handler
-app.use((req, res) => {
-  console.log(`⚠️  [404] Route not found: ${req.method} ${req.path}`);
-  res.status(404).json({ error: 'Route not found' });
-});
-
 // Start server
 initializeDatabase();
 app.listen(PORT, () => {
