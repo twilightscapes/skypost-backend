@@ -102,7 +102,14 @@ const corsOptions = {
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
   console.log('🏥 Health check endpoint called');
-  res.json({ status: 'ok' });
+  // Force disable any compression
+  res.set('Content-Encoding', 'identity');
+  res.set('Transfer-Encoding', 'identity');
+  const body = JSON.stringify({ status: 'ok' });
+  res.set('Content-Length', body.length);
+  res.set('Content-Type', 'application/json');
+  res.send(body);
+  console.log('🏥 res.send completed');
 });
 
 // Test endpoint
