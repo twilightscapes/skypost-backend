@@ -22,58 +22,8 @@ let pool = null;
 let useFileStorage = false;
 
 function initializeDatabase() {
-  // Try PostgreSQL first if DATABASE_URL exists
-  if (process.env.DATABASE_URL) {
-    try {
-      pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
-      });
-      
-      console.log('✅ PostgreSQL connection pool created');
-      useFileStorage = false;
-      
-      // Create tables synchronously with a helper
-      pool.query(`
-        CREATE TABLE IF NOT EXISTS licenses (
-          id SERIAL PRIMARY KEY,
-          key VARCHAR(50) UNIQUE NOT NULL,
-          email VARCHAR(255),
-          status VARCHAR(50) DEFAULT 'pending',
-          tier VARCHAR(50) DEFAULT 'free',
-          expires_at TIMESTAMP,
-          activated_at TIMESTAMP,
-          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-      `).then(() => {
-        console.log('✅ Licenses table ready');
-      }).catch(err => {
-        console.error('❌ Failed to create licenses table:', err.message);
-      });
-      
-      return;
-    } catch (err) {
-      console.error('⚠️  PostgreSQL connection failed:', err.message);
-      useFileStorage = true;
-    }
-  } else {
-    console.log('⚠️  DATABASE_URL not found, using file-based storage');
-    useFileStorage = true;
-  }
-  
-  // File-based fallback
-  const DB_FILE = path.join('/tmp', 'data.json');
-  if (!fs.existsSync(DB_FILE)) {
-    const initialData = {
-      users: [],
-      licenses: [],
-      payments: []
-    };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-    console.log('✅ Initialized file-based database at /tmp/data.json');
-  } else {
-    console.log('✅ Connected to file-based database');
-  }
+  console.log('⚠️  Skipping database init for debugging');
+  useFileStorage = true;
 }
 
 // Database helper functions
@@ -150,8 +100,9 @@ app.use(express.json());
 
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
-  res.setHeader('Content-Type', 'application/json');
-  res.status(200).json({ status: 'ok' });
+  console.log('🏥 Health check endpoint called');
+  res.writeHead(200, { 'Content-Type': 'application/json' });
+  res.end(JSON.stringify({ status: 'ok' }));
 });
 
 // Test endpoint
@@ -808,7 +759,7 @@ app.post('/api/licenses/check', async (req, res) => {
 console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
 console.log('📍 About to call app.listen()...');
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 SkyPost License Backend running on 0.0.0.0:${PORT}`);
   console.log('📊 Configuration Check:');
   console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
@@ -816,4 +767,13 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log('  STRIPE_WEBHOOK_SECRET:', process.env.STRIPE_WEBHOOK_SECRET ? '✅ Loaded' : '❌ MISSING');
   console.log('  EMAIL_USER:', process.env.EMAIL_USER ? '✅ Loaded' : '❌ MISSING');
   console.log('  EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? '✅ Loaded' : '❌ MISSING');
+});
+
+// Log when the server actually starts accepting connections
+server.on('listening', () => {
+  console.log('📡 Server is now accepting connections!');
+});
+
+server.on('error', (err) => {
+  console.error('❌ Server error:', err);
 });
