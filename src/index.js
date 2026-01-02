@@ -122,21 +122,32 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
     // Handle successful charge (payment completed)
     if (event.type === 'charge.succeeded') {
       const charge = event.data.object;
+      console.log(`📨 Webhook received charge.succeeded:`, {
+        chargeId: charge.id,
+        email: charge.billing_details?.email,
+        metadata: charge.metadata
+      });
       
-      // Find the license by looking for pending licenses with email
+      // Find the license by looking for pending licenses
       const db = readDatabase();
       let license = null;
       
-      // Get email from Stripe charge
-      const stripeEmail = charge.billing_details?.email;
+      // Try to find by charge metadata first (most reliable)
+      if (charge.metadata?.license_key) {
+        console.log(`🔍 Looking for license by key: ${charge.metadata.license_key}`);
+        license = db.licenses.find(l => l.key === charge.metadata.license_key && l.status === 'pending');
+      }
       
-      // Find the first pending license with matching email
-      if (stripeEmail) {
+      // If not found by key, try by email
+      const stripeEmail = charge.billing_details?.email;
+      if (!license && stripeEmail) {
+        console.log(`🔍 Looking for license by email: ${stripeEmail}`);
         license = db.licenses.find(l => l.email === stripeEmail && l.status === 'pending');
       }
       
-      // If not found by email, find the most recent pending license (fallback)
+      // If still not found, find the most recent pending license (fallback)
       if (!license) {
+        console.log(`🔍 Fallback: looking for most recent pending license`);
         const pendingLicenses = db.licenses.filter(l => l.status === 'pending');
         if (pendingLicenses.length > 0) {
           license = pendingLicenses[pendingLicenses.length - 1];
@@ -145,6 +156,7 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
       
       if (license) {
         const email = license.email || stripeEmail;
+        console.log(`✅ Found license to activate: ${license.key}`);
         
         if (email) {
           license.status = 'active';
@@ -153,14 +165,23 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
           license.activated_at = new Date().toISOString();
           writeDatabase(db);
           
+          console.log(`💾 License saved to database`);
+          
           // Send license email
           await sendLicenseEmail(email, license.key);
-          console.log(`✅ License activated: ${license.key} for ${email}`);
+          console.log(`✅ License activated and email sent: ${license.key} for ${email}`);
         } else {
-          console.log(`⚠️ License ${license.key} has no email, skipping email send`);
+          console.log(`⚠️ License ${license.key} has no email, cannot send`);
+          license.status = 'active';
+          license.tier = 'pro';
+          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+          license.activated_at = new Date().toISOString();
+          writeDatabase(db);
+          console.log(`✅ License activated (no email to send to)`);
         }
       } else {
-        console.log(`⚠️ No pending license found for charge ${charge.id}`);
+        console.log(`❌ No pending license found to activate for charge ${charge.id}`);
+        console.log(`📊 All licenses in database:`, db.licenses.map(l => ({ key: l.key, email: l.email, status: l.status })));
       }
     }
 
