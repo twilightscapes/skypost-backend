@@ -229,8 +229,9 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
 
     res.json({ session_id: session.id, sessionUrl: session.url });
   } catch (error) {
-    console.error('Checkout error:', error);
-    res.status(500).json({ error: 'Checkout creation failed' });
+    console.error('❌ Checkout error:', error.message || error);
+    console.error('Stack:', error.stack);
+    res.status(500).json({ error: 'Checkout creation failed', details: error.message });
   }
 });
 
@@ -287,4 +288,8 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res)
 initializeDatabase();
 app.listen(PORT, () => {
   console.log(`🚀 SkyPost License Backend running on port ${PORT}`);
+  console.log('📊 Configuration Check:');
+  console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
+  console.log('  STRIPE_PRICE_ID:', process.env.STRIPE_PRICE_ID ? '✅ Loaded' : '❌ MISSING');
+  console.log('  STRIPE_WEBHOOK_SECRET:', process.env.STRIPE_WEBHOOK_SECRET ? '✅ Loaded' : '❌ MISSING');
 });
