@@ -146,10 +146,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
 app.use((req, res, next) => {
-  console.log(`📥 [${new Date().toISOString()}] ${req.method} ${req.path}`);
-  if (req.body && Object.keys(req.body).length > 0) {
-    console.log(`   Body:`, req.body);
-  }
+  console.log(`📥 ${req.method} ${req.path}`);
   next();
 });
 
