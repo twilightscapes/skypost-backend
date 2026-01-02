@@ -759,24 +759,14 @@ app.post('/api/licenses/check', async (req, res) => {
 console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
 console.log('📍 About to call app.listen()...');
-app.listen(process.env.PORT || 3000, '::', () => {
-  console.log(`🚀 SkyPost License Backend listening on [::]:${process.env.PORT || 3000}`);
-});
+const server = app.listen(process.env.PORT || 3000, '0.0.0.0', () => {
+  console.log(`🚀 SkyPost License Backend running on 0.0.0.0:${process.env.PORT || 3000}`);
   console.log('📊 Configuration Check:');
   console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_PRICE_ID:', process.env.STRIPE_PRICE_ID ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_WEBHOOK_SECRET:', process.env.STRIPE_WEBHOOK_SECRET ? '✅ Loaded' : '❌ MISSING');
   console.log('  EMAIL_USER:', process.env.EMAIL_USER ? '✅ Loaded' : '❌ MISSING');
   console.log('  EMAIL_PASSWORD:', process.env.EMAIL_PASSWORD ? '✅ Loaded' : '❌ MISSING');
-});
-
-// Log when the server actually starts accepting connections
-server.on('listening', () => {
-  console.log('📡 Server is now accepting connections!');
-});
-
-server.on('error', (err) => {
-  console.error('❌ Server error:', err);
 });
 
 // Log when the server actually starts accepting connections
