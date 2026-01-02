@@ -541,20 +541,19 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
   try {
     const { deviceId, email, success_url, cancel_url } = req.body;
 
-    if (!deviceId && !email) {
-      return res.status(400).json({ error: 'Device ID or email required' });
-    }
-
     const db = readDatabase();
     
     // Generate new license key upfront
     const licenseKey = `SKY-${uuidv4().toString().replace(/-/g, '').substr(0, 12).toUpperCase()}`;
     
+    // Use provided email or generate a temporary one (will be updated by user later)
+    const licenseEmail = email || `temp-${licenseKey.toLowerCase()}@skypost.local`;
+
     // Create new pending license record
     const newLicense = {
       id: uuidv4(),
       key: licenseKey,
-      email: email || null,
+      email: licenseEmail,
       device_id: deviceId || null,
       tier: 'free',
       status: 'pending',
@@ -576,14 +575,14 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
         }
       ],
       mode: 'subscription',
-      customer_email: email || undefined,
+      customer_email: licenseEmail,
       success_url: `https://skypost-license-backend.onrender.com/pro/success?license_key=${licenseKey}`,
       cancel_url: 'https://skypost-license-backend.onrender.com/pro/cancel',
       client_reference_id: licenseKey,
       metadata: {
         license_key: licenseKey,
         device_id: deviceId || 'multi-device',
-        email: email || 'not-provided'
+        email: licenseEmail
       }
     });
 
