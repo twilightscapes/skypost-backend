@@ -15,46 +15,9 @@ let pool = null;
 let useFileStorage = false;
 
 function initializeDatabase() {
-  // Try PostgreSQL first if DATABASE_URL exists
-  if (process.env.DATABASE_URL) {
-    try {
-      pool = new Pool({
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false } // Railway requires SSL
-      });
-      
-      console.log('✅ Connected to PostgreSQL database');
-      
-      // Initialize tables asynchronously
-      (async () => {
-        try {
-          const result = await pool.query(`
-            CREATE TABLE IF NOT EXISTS licenses (
-              id SERIAL PRIMARY KEY,
-              key VARCHAR(50) UNIQUE NOT NULL,
-              email VARCHAR(255),
-              status VARCHAR(50) DEFAULT 'pending',
-              tier VARCHAR(50) DEFAULT 'free',
-              expires_at TIMESTAMP,
-              activated_at TIMESTAMP,
-              created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-          `);
-          console.log('✅ Licenses table initialized');
-        } catch (err) {
-          console.error('❌ Error creating licenses table:', err.message);
-        }
-      })();
-      
-      return;
-    } catch (err) {
-      console.log('⚠️  PostgreSQL connection failed, falling back to file storage:', err.message);
-      useFileStorage = true;
-    }
-  } else {
-    console.log('⚠️  DATABASE_URL not found, using file-based storage');
-    useFileStorage = true;
-  }
+  // Temporarily disable PostgreSQL to debug
+  console.log('⚠️  Using file-based storage for debugging');
+  useFileStorage = true;
   
   // File-based fallback
   const DB_FILE = path.join('/tmp', 'data.json');
