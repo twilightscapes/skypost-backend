@@ -15,9 +15,9 @@ const nodemailer = require('nodemailer');
 const { Pool } = require('pg');
 
 const app = express();
-const PORT = 3000; // Hardcoded for testing
+const PORT = process.env.PORT || 3000;
 
-console.log('🔧 PORT hardcoded to: 3000');
+console.log('🔧 PORT from environment:', PORT);
 
 // PostgreSQL connection (from DATABASE_URL on Render)
 let pool = null;
@@ -94,22 +94,15 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 
-// TEMPORARILY DISABLE: app.use(cors(corsOptions));
-// TEMPORARILY DISABLE: app.options('*', cors(corsOptions));
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 
-// TEMPORARILY DISABLE: app.use(express.json());
+// Enable JSON parsing
+app.use(express.json());
 
-// Health check endpoint for Railway - MUST work immediately
+// Health check endpoint for Railway
 app.get('/health', (req, res) => {
-  console.log('🏥 Health check endpoint called');
-  // Force disable any compression
-  res.set('Content-Encoding', 'identity');
-  res.set('Transfer-Encoding', 'identity');
-  const body = JSON.stringify({ status: 'ok' });
-  res.set('Content-Length', body.length);
-  res.set('Content-Type', 'application/json');
-  res.send(body);
-  console.log('🏥 res.send completed');
+  res.json({ status: 'ok' });
 });
 
 // Test endpoint
@@ -762,28 +755,12 @@ app.post('/api/licenses/check', async (req, res) => {
   }
 });
 
-// ALSO: Start a raw HTTP server on port 9000 for testing
-const http = require('http');
-const testServer = http.createServer((req, res) => {
-  if (req.url === '/test-health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ raw: 'http', ok: true }));
-  } else {
-    res.writeHead(404);
-    res.end('Not found');
-  }
-});
-
-testServer.listen(9000, () => {
-  console.log('🟠 Raw HTTP server listening on port 9000');
-});
-
 // Start server
 console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
 console.log('📍 About to call app.listen()...');
-const server = app.listen(PORT, () => {
-  console.log(`🚀 SkyPost License Backend running on port ${PORT}`);
+const server = app.listen(PORT, '::', () => {
+  console.log(`🚀 SkyPost License Backend running on [::]:${PORT}`);
   console.log('📊 Configuration Check:');
   console.log('  STRIPE_SECRET_KEY:', process.env.STRIPE_SECRET_KEY ? '✅ Loaded' : '❌ MISSING');
   console.log('  STRIPE_PRICE_ID:', process.env.STRIPE_PRICE_ID ? '✅ Loaded' : '❌ MISSING');
