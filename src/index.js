@@ -105,17 +105,13 @@ app.options('*', cors(corsOptions));
 
 // Body parsing middleware MUST come before routes
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
 
-// Request logging middleware
-app.use((req, res, next) => {
-  console.log(`📥 ${req.method} ${req.path}`);
-  next();
-});
-
-// Health check endpoint for Railway
+// Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
+  console.log('Health check hit');
+  res.setHeader('Content-Type', 'application/json');
+  res.writeHead(200);
+  res.end(JSON.stringify({ status: 'ok' }));
 });
 
 // Test endpoint
