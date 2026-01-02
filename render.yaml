@@ -3,8 +3,9 @@ services:
     name: skypost-license-backend
     env: node
     plan: free
+    rootDir: skypost-backend
     buildCommand: npm install
-    startCommand: node src/index-simple.js
+    startCommand: node src/index.js
     envVars:
       - key: NODE_ENV
         value: production
