@@ -640,18 +640,24 @@ app.post('/api/subscriptions/check-license', (req, res) => {
 app.post('/api/licenses/check', (req, res) => {
   try {
     const { licenseKey } = req.body;
+    console.log(`\n📱 LICENSE CHECK CALLED - Key: ${licenseKey}`);
 
     if (!licenseKey) {
       return res.status(400).json({ error: 'License key required' });
     }
 
     const db = readDatabase();
+    console.log(`📂 Total licenses in database: ${db.licenses.length}`);
+    console.log(`📋 All license keys: ${db.licenses.map(l => l.key).join(', ')}`);
+    
     const license = db.licenses.find(l => l.key === licenseKey);
 
     if (!license) {
+      console.log(`❌ License NOT found: ${licenseKey}`);
       return res.json({ valid: false, isPro: false, tier: 'free' });
     }
 
+    console.log(`✅ License FOUND: ${licenseKey}`);
     // Auto-activate any license on first check (whether pending or any status)
     // This ensures licenses created during checkout are activated
     console.log(`🔍 License found: ${licenseKey} - Current status: ${license.status}, tier: ${license.tier}`);
