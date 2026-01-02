@@ -46,15 +46,58 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
-app.use(express.json());
 
-// Raw body for webhook signature verification
-app.use(express.raw({type: 'application/json'}, (req, res, next) => {
-  if (req.path === '/webhooks/stripe') {
-    return next();
+// Stripe webhook needs raw body for signature verification - MUST come BEFORE json parsing
+app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  
+  try {
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      sig,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+
+    if (event.type === 'charge.succeeded') {
+      const charge = event.data.object;
+      const licenseKey = charge.metadata?.license_key;
+      const deviceId = charge.metadata?.device_id;
+
+      if (licenseKey && deviceId) {
+        const db = readDatabase();
+        const license = db.licenses.find(l => l.key === licenseKey && l.device_id === deviceId);
+
+        if (license) {
+          license.tier = 'pro';
+          license.status = 'active';
+          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+        }
+
+        // Record payment
+        db.payments.push({
+          id: uuidv4(),
+          license_key: licenseKey,
+          device_id: deviceId,
+          amount: charge.amount,
+          currency: charge.currency,
+          stripe_charge_id: charge.id,
+          created_at: new Date().toISOString()
+        });
+
+        writeDatabase(db);
+        console.log(`✅ License ${licenseKey} upgraded to Pro`);
+      }
+    }
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error('Webhook error:', error.message);
+    res.status(400).send(`Webhook Error: ${error.message}`);
   }
-  express.json()(req, res, next);
-}));
+});
+
+// All other routes use JSON parsing
+app.use(express.json());
 
 // Health check
 app.get('/', (req, res) => {
@@ -236,53 +279,6 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
 });
 
 // Stripe webhook handler
-app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
-  const sig = req.headers['stripe-signature'];
-  
-  try {
-    const event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-
-    if (event.type === 'charge.succeeded') {
-      const charge = event.data.object;
-      const licenseKey = charge.metadata?.license_key;
-      const deviceId = charge.metadata?.device_id;
-
-      if (licenseKey && deviceId) {
-        const db = readDatabase();
-        const license = db.licenses.find(l => l.key === licenseKey && l.device_id === deviceId);
-
-        if (license) {
-          license.tier = 'pro';
-          license.status = 'active';
-          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-        }
-
-        // Record payment
-        db.payments.push({
-          id: uuidv4(),
-          license_key: licenseKey,
-          device_id: deviceId,
-          amount: charge.amount,
-          currency: charge.currency,
-          stripe_charge_id: charge.id,
-          created_at: new Date().toISOString()
-        });
-
-        writeDatabase(db);
-        console.log(`✅ License ${licenseKey} upgraded to Pro`);
-      }
-    }
-
-    res.json({ received: true });
-  } catch (error) {
-    console.error('Webhook error:', error.message);
-    res.status(400).send(`Webhook Error: ${error.message}`);
-  }
-});
 
 // Check license status for device
 app.post('/api/subscriptions/check-license', (req, res) => {
