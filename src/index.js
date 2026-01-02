@@ -105,8 +105,16 @@ app.use(express.json());
 app.get('/health', (req, res) => {
   console.log('🏥 Health check endpoint called');
   console.log('🏥 Calling res.json');
+  
+  // Force write to happen
+  res.setHeader('X-Custom-Header', 'test');
+  
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  console.log('🏥 res.json returned');
+  console.log('🏥 res.json returned, socket state:', {
+    writable: res.writable,
+    writableEnded: res.writableEnded,
+    headersSent: res.headersSent
+  });
 });
 
 // Test endpoint
