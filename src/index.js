@@ -17,6 +17,9 @@ const { Pool } = require('pg');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+console.log('🔧 PORT environment variable:', process.env.PORT);
+console.log('🔧 Will listen on port:', PORT);
+
 // PostgreSQL connection (from DATABASE_URL on Render)
 let pool = null;
 let useFileStorage = false;
@@ -101,23 +104,9 @@ app.use(express.json());
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
   console.log('🏥 Health check endpoint called');
-  
-  // Try to ensure response is sent
-  res.socket.setNoDelay(true);
-  
-  const body = JSON.stringify({ status: 'ok' });
-  const headers = {
-    'Content-Type': 'application/json',
-    'Content-Length': Buffer.byteLength(body),
-    'Connection': 'close'
-  };
-  
-  console.log('🏥 Writing response with headers:', headers);
-  res.writeHead(200, headers);
-  res.write(body);
-  console.log('🏥 After write, before end');
-  res.end();
-  console.log('🏥 res.end called');
+  console.log('🏥 Calling res.json');
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+  console.log('🏥 res.json returned');
 });
 
 // Test endpoint
