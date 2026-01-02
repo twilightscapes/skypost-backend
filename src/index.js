@@ -151,6 +151,11 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
 });
 
+// Test endpoint
+app.get('/test', (req, res) => {
+  res.json({ message: 'Backend is working!' });
+});
+
 // Email configuration with nodemailer
 // Using Mailgun for reliability (free tier available, very reliable on Render)
 const emailTransporter = nodemailer.createTransport({
@@ -794,6 +799,19 @@ app.post('/api/licenses/check', async (req, res) => {
     console.error('License key check error:', error);
     res.status(500).json({ error: 'License check failed' });
   }
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error(`\n❌ [ERROR] ${err.message}`);
+  console.error('Stack:', err.stack);
+  res.status(500).json({ error: 'Internal server error', details: err.message });
+});
+
+// 404 handler
+app.use((req, res) => {
+  console.log(`⚠️  [404] Route not found: ${req.method} ${req.path}`);
+  res.status(404).json({ error: 'Route not found' });
 });
 
 // Start server
