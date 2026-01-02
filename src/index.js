@@ -184,7 +184,7 @@ app.post('/api/licenses/check-device', (req, res) => {
 });
 
 // Create Stripe checkout session
-app.post('/api/subscriptions/create-checkout', (req, res) => {
+app.post('/api/subscriptions/create-checkout', async (req, res) => {
   try {
     const { deviceId, success_url, cancel_url } = req.body;
 
@@ -210,7 +210,7 @@ app.post('/api/subscriptions/create-checkout', (req, res) => {
       license = newLicense;
     }
 
-    const session = stripe.checkout.sessions.create({
+    const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
