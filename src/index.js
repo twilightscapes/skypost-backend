@@ -101,8 +101,13 @@ app.use(express.json());
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
   console.log('🏥 Health check endpoint called');
+  console.log('🏥 About to writeHead');
   res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ status: 'ok' }));
+  console.log('🏥 About to res.end');
+  const body = JSON.stringify({ status: 'ok' });
+  console.log('🏥 Body:', body);
+  res.end(body);
+  console.log('🏥 res.end called');
 });
 
 // Test endpoint
