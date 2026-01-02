@@ -629,9 +629,13 @@ app.post('/api/licenses/check-device', async (req, res) => {
 // Create Stripe checkout session (updated for email-based licensing)
 app.post('/api/subscriptions/create-checkout', async (req, res) => {
   try {
+    console.log(`\n🛒 [CHECKOUT] Request received`);
     const { deviceId, email, success_url, cancel_url } = req.body;
+    console.log(`🛒 [CHECKOUT] Params: deviceId=${deviceId}, email=${email}`);
 
+    console.log(`🛒 [CHECKOUT] Reading database...`);
     const db = await readDatabase();
+    console.log(`🛒 [CHECKOUT] Database read successfully`);
     
     // Generate new license key upfront
     const licenseKey = `SKY-${uuidv4().toString().replace(/-/g, '').substr(0, 12).toUpperCase()}`;
@@ -656,6 +660,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
     await writeDatabase(db);
 
     // Create Stripe checkout session
+    console.log(`🛒 [CHECKOUT] Creating Stripe session with PRICE_ID: ${process.env.STRIPE_PRICE_ID}`);
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
@@ -674,12 +679,14 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
         email: licenseEmail
       }
     });
+    console.log(`🛒 [CHECKOUT] Stripe session created: ${session.id}`);
 
     // Update license with Stripe customer ID for webhook matching
     newLicense.stripe_session_id = session.id;
     await writeDatabase(db);
 
     console.log(`📝 Created checkout session for license: ${licenseKey} (${email || deviceId})`);
+    console.log(`🛒 [CHECKOUT] Sending response with sessionUrl: ${session.url}`);
     
     res.json({ 
       session_id: session.id, 
@@ -687,7 +694,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
       license_key: licenseKey 
     });
   } catch (error) {
-    console.error('❌ Checkout error:', error.message || error);
+    console.error(`\n❌ [CHECKOUT] ERROR: ${error.message}`);
     console.error('Stack:', error.stack);
     res.status(500).json({ error: 'Checkout creation failed', details: error.message });
   }
