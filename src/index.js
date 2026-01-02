@@ -49,11 +49,14 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // Email configuration with nodemailer
+// Using SendGrid for reliability (Gmail often times out on Render)
 const emailTransporter = nodemailer.createTransport({
-  service: 'gmail',
+  host: 'smtp.sendgrid.net',
+  port: 587,
+  secure: false,
   auth: {
-    user: process.env.EMAIL_USER || 'your-email@gmail.com',
-    pass: process.env.EMAIL_PASSWORD || 'your-app-password'
+    user: 'apikey',
+    pass: process.env.SENDGRID_API_KEY || process.env.EMAIL_PASSWORD || 'your-sendgrid-api-key'
   }
 });
 
@@ -94,7 +97,7 @@ async function sendLicenseEmail(email, licenseKey) {
     `;
     
     await emailTransporter.sendMail({
-      from: process.env.EMAIL_USER,
+      from: process.env.EMAIL_USER || 'noreply@skypost.io',
       to: email,
       subject: '🎉 Your SkyPost Pro License Key',
       html: htmlContent
