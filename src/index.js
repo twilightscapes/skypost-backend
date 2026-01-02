@@ -1,3 +1,5 @@
+console.log('🔧 Starting SkyPost Backend initialization...');
+
 const express = require('express');
 const cors = require('cors');
 const fs = require('fs');
@@ -770,7 +772,9 @@ app.post('/api/licenses/check', async (req, res) => {
 });
 
 // Start server
+console.log('📍 About to call initializeDatabase()...');
 initializeDatabase();
+console.log('📍 About to call app.listen()...');
 app.listen(PORT, () => {
   console.log(`🚀 SkyPost License Backend running on port ${PORT}`);
   console.log('📊 Configuration Check:');
