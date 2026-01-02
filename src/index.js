@@ -109,7 +109,7 @@ async function sendLicenseEmail(email, licenseKey) {
 }
 
 // Stripe webhook needs raw body for signature verification - MUST come BEFORE json parsing
-app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
+app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req, res) => {
   const sig = req.headers['stripe-signature'];
   
   try {
