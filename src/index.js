@@ -133,6 +133,11 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// Health check endpoint for Railway
+app.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok' });
+});
+
 // Email configuration with nodemailer
 // Using Mailgun for reliability (free tier available, very reliable on Render)
 const emailTransporter = nodemailer.createTransport({
