@@ -217,7 +217,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
           quantity: 1
         }
       ],
-      mode: 'payment',
+      mode: 'subscription',
       success_url: success_url || 'https://skypost.app/pro/success',
       cancel_url: cancel_url || 'https://skypost.app/pro/cancel',
       client_reference_id: license.key,
