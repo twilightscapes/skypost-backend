@@ -5,15 +5,52 @@ const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const nodemailer = require('nodemailer');
+const { Pool } = require('pg');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// File-based storage
-const DB_FILE = path.join(__dirname, '../data.json');
+// PostgreSQL connection (from DATABASE_URL on Render)
+let pool = null;
+let useFileStorage = false;
 
-// Initialize data file
 function initializeDatabase() {
+  // Try PostgreSQL first if DATABASE_URL exists
+  if (process.env.DATABASE_URL) {
+    try {
+      pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false } // Render requires SSL
+      });
+      
+      console.log('✅ Connected to PostgreSQL database');
+      
+      // Initialize tables
+      pool.query(`
+        CREATE TABLE IF NOT EXISTS licenses (
+          id SERIAL PRIMARY KEY,
+          key VARCHAR(50) UNIQUE NOT NULL,
+          email VARCHAR(255),
+          status VARCHAR(50) DEFAULT 'pending',
+          tier VARCHAR(50) DEFAULT 'free',
+          expires_at TIMESTAMP,
+          activated_at TIMESTAMP,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+      `).catch(err => console.error('Error creating licenses table:', err));
+      
+      return;
+    } catch (err) {
+      console.log('⚠️  PostgreSQL connection failed, falling back to file storage:', err.message);
+      useFileStorage = true;
+    }
+  } else {
+    console.log('⚠️  DATABASE_URL not found, using file-based storage');
+    useFileStorage = true;
+  }
+  
+  // File-based fallback
+  const DB_FILE = path.join('/tmp', 'data.json');
   if (!fs.existsSync(DB_FILE)) {
     const initialData = {
       users: [],
@@ -21,18 +58,66 @@ function initializeDatabase() {
       payments: []
     };
     fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-    console.log('✅ Initialized file-based database');
+    console.log('✅ Initialized file-based database at /tmp/data.json');
   } else {
     console.log('✅ Connected to file-based database');
   }
 }
 
-function readDatabase() {
+// Database helper functions
+async function readDatabase() {
+  if (pool) {
+    try {
+      const result = await pool.query('SELECT * FROM licenses');
+      return {
+        users: [],
+        licenses: result.rows.map(row => ({
+          id: row.id,
+          key: row.key,
+          email: row.email,
+          status: row.status,
+          tier: row.tier,
+          expires_at: row.expires_at,
+          activated_at: row.activated_at,
+          created_at: row.created_at
+        })),
+        payments: []
+      };
+    } catch (err) {
+      console.error('Error reading from PostgreSQL:', err);
+      // Fall back to file storage
+      useFileStorage = true;
+    }
+  }
+  
+  // File-based fallback
+  const DB_FILE = path.join('/tmp', 'data.json');
   const data = fs.readFileSync(DB_FILE, 'utf8');
   return JSON.parse(data);
 }
 
-function writeDatabase(data) {
+async function writeDatabase(data) {
+  if (pool) {
+    try {
+      // Clear and rewrite licenses
+      await pool.query('DELETE FROM licenses');
+      
+      for (const license of data.licenses) {
+        await pool.query(
+          `INSERT INTO licenses (key, email, status, tier, expires_at, activated_at) 
+           VALUES ($1, $2, $3, $4, $5, $6)`,
+          [license.key, license.email, license.status, license.tier, license.expires_at, license.activated_at]
+        );
+      }
+      return;
+    } catch (err) {
+      console.error('Error writing to PostgreSQL:', err);
+      useFileStorage = true;
+    }
+  }
+  
+  // File-based fallback
+  const DB_FILE = path.join('/tmp', 'data.json');
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
@@ -132,7 +217,7 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
       });
       
       // Find the license by looking for pending licenses
-      const db = readDatabase();
+      const db = await readDatabase();
       let license = null;
       
       // Try to find by charge metadata first (most reliable)
@@ -168,7 +253,7 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         license.activated_at = new Date().toISOString();
         
         try {
-          writeDatabase(db);
+          await writeDatabase(db);
           console.log(`💾 License saved to database: ${license.key}`);
         } catch (saveErr) {
           console.error(`❌ Failed to save license:`, saveErr.message);
@@ -200,14 +285,14 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
       const deviceId = session.metadata?.device_id;
 
       if (licenseKey && deviceId) {
-        const db = readDatabase();
+        const db = await readDatabase();
         const license = db.licenses.find(l => l.key === licenseKey && l.device_id === deviceId);
 
         if (license) {
           license.tier = 'pro';
           license.status = 'active';
           license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-          writeDatabase(db);
+          await writeDatabase(db);
           console.log(`✅ License ${licenseKey} upgraded to Pro (from checkout session)`);
         }
       }
@@ -416,7 +501,7 @@ app.get('/pro/cancel', (req, res) => {
 });
 
 // Register user and generate license
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { email, password } = req.body;
 
@@ -424,7 +509,7 @@ app.post('/api/auth/register', (req, res) => {
       return res.status(400).json({ error: 'Email and password required' });
     }
 
-    const db = readDatabase();
+    const db = await readDatabase();
 
     // Check if user exists
     if (db.users.find(u => u.email === email)) {
@@ -455,7 +540,7 @@ app.post('/api/auth/register', (req, res) => {
     db.users.push(user);
     db.licenses.push(license);
 
-    writeDatabase(db);
+    await writeDatabase(db);
 
     res.json({
       success: true,
@@ -470,7 +555,7 @@ app.post('/api/auth/register', (req, res) => {
 });
 
 // Verify license
-app.post('/api/licenses/verify', (req, res) => {
+app.post('/api/licenses/verify', async (req, res) => {
   try {
     const { licenseKey } = req.body;
 
@@ -478,7 +563,7 @@ app.post('/api/licenses/verify', (req, res) => {
       return res.status(400).json({ error: 'License key required' });
     }
 
-    const db = readDatabase();
+    const db = await readDatabase();
     const license = db.licenses.find(l => l.key === licenseKey);
 
     if (!license) {
@@ -506,7 +591,7 @@ app.post('/api/licenses/verify', (req, res) => {
 });
 
 // Check if device has Pro license
-app.post('/api/licenses/check-device', (req, res) => {
+app.post('/api/licenses/check-device', async (req, res) => {
   try {
     const { deviceId } = req.body;
 
@@ -514,7 +599,7 @@ app.post('/api/licenses/check-device', (req, res) => {
       return res.status(400).json({ error: 'Device ID required' });
     }
 
-    const db = readDatabase();
+    const db = await readDatabase();
     const license = db.licenses.find(l => l.device_id === deviceId);
 
     if (!license) {
@@ -541,7 +626,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
   try {
     const { deviceId, email, success_url, cancel_url } = req.body;
 
-    const db = readDatabase();
+    const db = await readDatabase();
     
     // Generate new license key upfront
     const licenseKey = `SKY-${uuidv4().toString().replace(/-/g, '').substr(0, 12).toUpperCase()}`;
@@ -563,7 +648,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
     };
     
     db.licenses.push(newLicense);
-    writeDatabase(db);
+    await writeDatabase(db);
 
     // Create Stripe checkout session
     const session = await stripe.checkout.sessions.create({
@@ -587,7 +672,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
 
     // Update license with Stripe customer ID for webhook matching
     newLicense.stripe_session_id = session.id;
-    writeDatabase(db);
+    await writeDatabase(db);
 
     console.log(`📝 Created checkout session for license: ${licenseKey} (${email || deviceId})`);
     
@@ -606,7 +691,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
 // Stripe webhook handler
 
 // Check license status for device
-app.post('/api/subscriptions/check-license', (req, res) => {
+app.post('/api/subscriptions/check-license', async (req, res) => {
   try {
     const { deviceId } = req.body;
 
@@ -614,7 +699,7 @@ app.post('/api/subscriptions/check-license', (req, res) => {
       return res.status(400).json({ error: 'Device ID required' });
     }
 
-    const db = readDatabase();
+    const db = await readDatabase();
     const license = db.licenses.find(l => l.device_id === deviceId);
 
     if (!license) {
@@ -637,7 +722,7 @@ app.post('/api/subscriptions/check-license', (req, res) => {
 });
 
 // NEW: Check license by key (email-based system)
-app.post('/api/licenses/check', (req, res) => {
+app.post('/api/licenses/check', async (req, res) => {
   try {
     const { licenseKey } = req.body;
     console.log(`\n📱 LICENSE CHECK CALLED - Key: ${licenseKey}`);
@@ -646,7 +731,7 @@ app.post('/api/licenses/check', (req, res) => {
       return res.status(400).json({ error: 'License key required' });
     }
 
-    const db = readDatabase();
+    const db = await readDatabase();
     console.log(`📂 Total licenses in database: ${db.licenses.length}`);
     console.log(`📋 All license keys: ${db.licenses.map(l => l.key).join(', ')}`);
     
@@ -667,7 +752,7 @@ app.post('/api/licenses/check', (req, res) => {
       license.tier = 'pro';
       license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
       license.activated_at = new Date().toISOString();
-      writeDatabase(db);
+      await writeDatabase(db);
       console.log(`✅ License ${licenseKey} activated - New status: ${license.status}, tier: ${license.tier}`);
     }
 
