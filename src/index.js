@@ -1,12 +1,40 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// File-based storage
+const DB_FILE = path.join(__dirname, '../data.json');
+
+// Initialize data file
+function initializeDatabase() {
+  if (!fs.existsSync(DB_FILE)) {
+    const initialData = {
+      users: [],
+      licenses: [],
+      payments: []
+    };
+    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
+    console.log('✅ Initialized file-based database');
+  } else {
+    console.log('✅ Connected to file-based database');
+  }
+}
+
+function readDatabase() {
+  const data = fs.readFileSync(DB_FILE, 'utf8');
+  return JSON.parse(data);
+}
+
+function writeDatabase(data) {
+  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+}
 
 // CORS configuration
 const corsOptions = {
@@ -29,158 +57,118 @@ app.use(express.raw({type: 'application/json'}, (req, res, next) => {
   express.json()(req, res, next);
 }));
 
-// Initialize SQLite database
-const db = new sqlite3.Database('licenses.db', (err) => {
-  if (err) {
-    console.error('Database connection error:', err);
-    process.exit(1);
-  }
-  console.log('✅ Connected to SQLite database');
-  initializeDatabase();
-});
-
-function initializeDatabase() {
-  db.serialize(() => {
-    // Users table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS users (
-        id TEXT PRIMARY KEY,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-
-    // Licenses table
-    db.run(`
-      CREATE TABLE IF NOT EXISTS licenses (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        license_key TEXT UNIQUE NOT NULL,
-        status TEXT DEFAULT 'active',
-        features TEXT DEFAULT '{"workspace":true,"scheduling":true}',
-        expires_at DATETIME,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-      )
-    `);
-
-    // Stripe sessions table (for tracking payment status)
-    db.run(`
-      CREATE TABLE IF NOT EXISTS stripe_sessions (
-        id TEXT PRIMARY KEY,
-        session_id TEXT NOT NULL,
-        user_email TEXT NOT NULL,
-        status TEXT DEFAULT 'pending',
-        license_key TEXT,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      )
-    `);
-  });
-}
-
-// Root health check
+// Health check
 app.get('/', (req, res) => {
-  res.json({ status: 'ok', message: 'SkyPost Pro Backend', version: '1.0.0' });
-});
-
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy' });
+  res.json({ status: 'ok' });
 });
 
 // Register user and generate license
 app.post('/api/auth/register', (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'Email and password required' });
-  }
+  try {
+    const { email, password } = req.body;
 
-  const userId = uuidv4();
-  const licenseKey = `SKY-${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
-  const licenseId = uuidv4();
-
-  db.run(
-    'INSERT INTO users (id, email, password) VALUES (?, ?, ?)',
-    [userId, email, password],
-    (err) => {
-      if (err) {
-        if (err.message.includes('UNIQUE')) {
-          return res.status(400).json({ error: 'Email already registered' });
-        }
-        return res.status(500).json({ error: 'Registration failed' });
-      }
-
-      // Create license
-      const expiresAt = new Date();
-      expiresAt.setMonth(expiresAt.getMonth() + 1); // 1 month trial
-
-      db.run(
-        'INSERT INTO licenses (id, user_id, license_key, expires_at) VALUES (?, ?, ?, ?)',
-        [licenseId, userId, licenseKey, expiresAt.toISOString()],
-        (err) => {
-          if (err) {
-            return res.status(500).json({ error: 'Failed to create license' });
-          }
-
-          res.json({
-            user: { id: userId, email },
-            license: { licenseKey, status: 'active', expiresAt },
-            message: '✅ Registered! 1-month trial license activated.'
-          });
-        }
-      );
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password required' });
     }
-  );
+
+    const db = readDatabase();
+
+    // Check if user exists
+    if (db.users.find(u => u.email === email)) {
+      return res.status(400).json({ error: 'Email already registered' });
+    }
+
+    // Create user
+    const userId = uuidv4();
+    const user = {
+      id: userId,
+      email,
+      password, // In production, hash this!
+      created_at: new Date().toISOString()
+    };
+
+    // Generate license key
+    const licenseKey = `SKY-${uuidv4().replace(/-/g, '').substr(0, 12).toUpperCase()}`;
+    const license = {
+      id: uuidv4(),
+      user_id: userId,
+      key: licenseKey,
+      status: 'active',
+      tier: 'free',
+      created_at: new Date().toISOString(),
+      expires_at: null
+    };
+
+    db.users.push(user);
+    db.licenses.push(license);
+
+    writeDatabase(db);
+
+    res.json({
+      success: true,
+      user_id: userId,
+      license_key: licenseKey,
+      message: 'User registered successfully'
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
+  }
 });
 
 // Verify license
 app.post('/api/licenses/verify', (req, res) => {
-  const { licenseKey } = req.body;
-  if (!licenseKey) {
-    return res.status(400).json({ valid: false, error: 'License key required' });
-  }
+  try {
+    const { licenseKey } = req.body;
 
-  db.get(
-    'SELECT * FROM licenses WHERE license_key = ?',
-    [licenseKey],
-    (err, license) => {
-      if (err) {
-        return res.status(500).json({ valid: false, error: 'Database error' });
-      }
-
-      if (!license) {
-        return res.json({ valid: false, error: 'License not found' });
-      }
-
-      // Check expiration
-      const expiresAt = new Date(license.expires_at);
-      if (expiresAt < new Date()) {
-        return res.json({ valid: false, error: 'License expired' });
-      }
-
-      res.json({
-        valid: true,
-        license: {
-          id: license.id,
-          status: license.status,
-          features: JSON.parse(license.features || '{}'),
-          expiresAt: license.expires_at
-        }
-      });
+    if (!licenseKey) {
+      return res.status(400).json({ error: 'License key required' });
     }
-  );
+
+    const db = readDatabase();
+    const license = db.licenses.find(l => l.key === licenseKey);
+
+    if (!license) {
+      return res.status(404).json({ valid: false, error: 'License not found' });
+    }
+
+    if (license.status !== 'active') {
+      return res.status(400).json({ valid: false, error: 'License inactive' });
+    }
+
+    const user = db.users.find(u => u.id === license.user_id);
+
+    res.json({
+      valid: true,
+      license_key: license.key,
+      tier: license.tier,
+      user_email: user?.email,
+      created_at: license.created_at,
+      expires_at: license.expires_at
+    });
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ error: 'Verification failed' });
+  }
 });
 
 // Create Stripe checkout session
-app.post('/api/subscriptions/create-checkout', async (req, res) => {
-  const { userEmail } = req.body;
-  if (!userEmail) {
-    return res.status(400).json({ error: 'Email required' });
-  }
-
+app.post('/api/subscriptions/create-checkout', (req, res) => {
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: 'subscription',
+    const { licenseKey, success_url, cancel_url } = req.body;
+
+    if (!licenseKey) {
+      return res.status(400).json({ error: 'License key required' });
+    }
+
+    const db = readDatabase();
+    const license = db.licenses.find(l => l.key === licenseKey);
+
+    if (!license) {
+      return res.status(404).json({ error: 'License not found' });
+    }
+
+    const session = stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [
         {
@@ -188,148 +176,74 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
           quantity: 1
         }
       ],
-      success_url: 'https://skypost.app/pro/success?session_id={CHECKOUT_SESSION_ID}',
-      cancel_url: 'https://skypost.app/pro/cancel',
-      customer_email: userEmail,
+      mode: 'payment',
+      success_url: success_url || 'https://skypost.app/pro/success',
+      cancel_url: cancel_url || 'https://skypost.app/pro/cancel',
+      client_reference_id: licenseKey,
       metadata: {
-        userEmail
+        license_key: licenseKey,
+        user_id: license.user_id
       }
     });
 
-    // Store session for webhook tracking
-    const sessionId = uuidv4();
-    db.run(
-      'INSERT INTO stripe_sessions (id, session_id, user_email, status) VALUES (?, ?, ?, ?)',
-      [sessionId, session.id, userEmail, 'pending'],
-      (err) => {
-        if (err) {
-          console.error('Failed to store session:', err);
-        }
-      }
-    );
-
-    res.json({ 
-      sessionId: session.id, 
-      sessionUrl: session.url,
-      message: 'Checkout session created'
-    });
+    res.json({ session_id: session.id, session_url: session.url });
   } catch (error) {
-    console.error('Stripe error:', error);
-    res.status(500).json({ error: 'Failed to create checkout session' });
+    console.error('Checkout error:', error);
+    res.status(500).json({ error: 'Checkout creation failed' });
   }
 });
 
 // Stripe webhook handler
-app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req, res) => {
+app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res) => {
   const sig = req.headers['stripe-signature'];
-  const rawBody = req.body;
-
-  let event;
+  
   try {
-    event = stripe.webhooks.constructEvent(
-      rawBody,
+    const event = stripe.webhooks.constructEvent(
+      req.body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
-  } catch (err) {
-    console.error('Webhook signature verification failed:', err.message);
-    return res.status(400).send(`Webhook Error: ${err.message}`);
-  }
 
-  try {
     if (event.type === 'charge.succeeded') {
       const charge = event.data.object;
-      const email = charge.billing_details?.email || charge.metadata?.userEmail;
-      
-      if (email) {
-        console.log(`✅ Payment succeeded for ${email}`);
-        
-        // Create license for the user
-        db.get('SELECT id FROM users WHERE email = ?', [email], (err, user) => {
-          if (err) {
-            console.error('Error finding user:', err);
-            return;
-          }
+      const licenseKey = charge.metadata?.license_key;
+      const userId = charge.metadata?.user_id;
 
-          if (!user) {
-            // Auto-create user if doesn't exist
-            const userId = uuidv4();
-            db.run('INSERT INTO users (id, email, password) VALUES (?, ?, ?)',
-              [userId, email, 'stripe_payment'],
-              (err) => {
-                if (!err) {
-                  createProLicense(userId, email);
-                }
-              }
-            );
-          } else {
-            createProLicense(user.id, email);
-          }
+      if (licenseKey) {
+        const db = readDatabase();
+        const license = db.licenses.find(l => l.key === licenseKey);
+
+        if (license) {
+          license.tier = 'pro';
+          license.status = 'active';
+          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+        }
+
+        // Record payment
+        db.payments.push({
+          id: uuidv4(),
+          license_key: licenseKey,
+          user_id: userId,
+          amount: charge.amount,
+          currency: charge.currency,
+          stripe_charge_id: charge.id,
+          created_at: new Date().toISOString()
         });
+
+        writeDatabase(db);
+        console.log(`✅ License ${licenseKey} upgraded to Pro`);
       }
     }
 
     res.json({ received: true });
   } catch (error) {
-    console.error('Webhook processing error:', error);
-    res.status(500).json({ error: 'Webhook processing failed' });
+    console.error('Webhook error:', error.message);
+    res.status(400).send(`Webhook Error: ${error.message}`);
   }
 });
 
-function createProLicense(userId, email) {
-  const licenseKey = `SKY-${Math.random().toString(36).substring(2, 12).toUpperCase()}`;
-  const licenseId = uuidv4();
-  const expiresAt = new Date();
-  expiresAt.setMonth(expiresAt.getMonth() + 1); // 1-month subscription
-
-  db.run(
-    'INSERT INTO licenses (id, user_id, license_key, status, expires_at) VALUES (?, ?, ?, ?, ?)',
-    [licenseId, userId, licenseKey, 'active', expiresAt.toISOString()],
-    (err) => {
-      if (!err) {
-        console.log(`✅ License created: ${licenseKey} for ${email}`);
-      }
-    }
-  );
-}
-
-// Get license by email (for user dashboard)
-app.get('/api/user/license/:email', (req, res) => {
-  const { email } = req.params;
-  
-  db.get(
-    'SELECT l.* FROM licenses l JOIN users u ON l.user_id = u.id WHERE u.email = ? ORDER BY l.created_at DESC LIMIT 1',
-    [email],
-    (err, license) => {
-      if (err) {
-        return res.status(500).json({ error: 'Database error' });
-      }
-
-      if (!license) {
-        return res.json({ found: false, message: 'No license found' });
-      }
-
-      res.json({
-        found: true,
-        license: {
-          licenseKey: license.license_key,
-          status: license.status,
-          expiresAt: license.expires_at
-        }
-      });
-    }
-  );
-});
-
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully...');
-  db.close();
-  process.exit(0);
-});
-
+// Start server
+initializeDatabase();
 app.listen(PORT, () => {
-  console.log(`🚀 SkyPost Pro Backend running on port ${PORT}`);
-  console.log(`📊 Stripe integration enabled`);
-  console.log(`💾 Using SQLite database (licenses.db)`);
+  console.log(`🚀 SkyPost License Backend running on port ${PORT}`);
 });
