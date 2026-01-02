@@ -309,6 +309,37 @@ app.post('/api/subscriptions/check-license', (req, res) => {
   }
 });
 
+// Check license status for device
+app.post('/api/subscriptions/check-license', (req, res) => {
+  try {
+    const { deviceId } = req.body;
+
+    if (!deviceId) {
+      return res.status(400).json({ error: 'Device ID required' });
+    }
+
+    const db = readDatabase();
+    const license = db.licenses.find(l => l.device_id === deviceId);
+
+    if (!license) {
+      return res.json({ active: false });
+    }
+
+    const isActive = license.tier === 'pro' && license.status === 'active';
+    const isExpired = isActive && license.expires_at && new Date(license.expires_at) < new Date();
+
+    res.json({
+      active: isActive && !isExpired,
+      licenseKey: license.key,
+      expiresAt: license.expires_at,
+      tier: license.tier
+    });
+  } catch (error) {
+    console.error('License check error:', error);
+    res.status(500).json({ error: 'License check failed' });
+  }
+});
+
 // Start server
 initializeDatabase();
 app.listen(PORT, () => {
