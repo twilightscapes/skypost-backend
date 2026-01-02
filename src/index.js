@@ -145,8 +145,8 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
-// Body parsing middleware MUST come before routes
-app.use(express.json());
+// Body parsing - TEMPORARILY DISABLED FOR TESTING
+// app.use(express.json());
 
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
