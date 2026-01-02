@@ -133,6 +133,19 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
+// Body parsing middleware MUST come before routes
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`📥 [${new Date().toISOString()}] ${req.method} ${req.path}`);
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log(`   Body:`, req.body);
+  }
+  next();
+});
+
 // Health check endpoint for Railway
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok' });
@@ -309,9 +322,6 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
     res.status(400).send(`Webhook Error: ${error.message}`);
   }
 });
-
-// All other routes use JSON parsing
-app.use(express.json());
 
 // Health check
 app.get('/', (req, res) => {
