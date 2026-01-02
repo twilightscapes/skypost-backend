@@ -3,7 +3,12 @@ const cors = require('cors');
 const fs = require('fs');
 const path = require('path');
 const { v4: uuidv4 } = require('uuid');
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+let stripe = null;
+try {
+  stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+} catch (err) {
+  console.warn('⚠️  Stripe initialization failed:', err.message);
+}
 const nodemailer = require('nodemailer');
 const { Pool } = require('pg');
 
