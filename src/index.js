@@ -95,26 +95,15 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
+// TEMPORARILY DISABLE: app.use(cors(corsOptions));
+// TEMPORARILY DISABLE: app.options('*', cors(corsOptions));
 
-// Re-enable JSON parsing
-app.use(express.json());
+// TEMPORARILY DISABLE: app.use(express.json());
 
 // Health check endpoint for Railway - MUST work immediately
 app.get('/health', (req, res) => {
   console.log('🏥 Health check endpoint called');
-  console.log('🏥 Calling res.json');
-  
-  // Force write to happen
-  res.setHeader('X-Custom-Header', 'test');
-  
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
-  console.log('🏥 res.json returned, socket state:', {
-    writable: res.writable,
-    writableEnded: res.writableEnded,
-    headersSent: res.headersSent
-  });
+  res.json({ status: 'ok' });
 });
 
 // Test endpoint
