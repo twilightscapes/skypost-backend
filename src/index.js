@@ -158,27 +158,32 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         const email = license.email || stripeEmail;
         console.log(`✅ Found license to activate: ${license.key}`);
         
-        if (email) {
-          license.status = 'active';
-          license.tier = 'pro';
-          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-          license.activated_at = new Date().toISOString();
+        // Always activate, even if no email
+        license.status = 'active';
+        license.tier = 'pro';
+        license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+        license.activated_at = new Date().toISOString();
+        
+        try {
           writeDatabase(db);
-          
-          console.log(`💾 License saved to database`);
-          
-          // Send license email
-          await sendLicenseEmail(email, license.key);
-          console.log(`✅ License activated and email sent: ${license.key} for ${email}`);
-        } else {
-          console.log(`⚠️ License ${license.key} has no email, cannot send`);
-          license.status = 'active';
-          license.tier = 'pro';
-          license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-          license.activated_at = new Date().toISOString();
-          writeDatabase(db);
-          console.log(`✅ License activated (no email to send to)`);
+          console.log(`💾 License saved to database: ${license.key}`);
+        } catch (saveErr) {
+          console.error(`❌ Failed to save license:`, saveErr.message);
         }
+        
+        // Try to send email if we have it
+        if (email) {
+          try {
+            await sendLicenseEmail(email, license.key);
+            console.log(`📧 Email sent: ${license.key} for ${email}`);
+          } catch (emailErr) {
+            console.error(`⚠️ Email failed (but license is activated):`, emailErr.message);
+          }
+        } else {
+          console.log(`⚠️ No email to send (license still activated)`);
+        }
+        
+        console.log(`✅ License fully processed: ${license.key}`);
       } else {
         console.log(`❌ No pending license found to activate for charge ${charge.id}`);
         console.log(`📊 All licenses in database:`, db.licenses.map(l => ({ key: l.key, email: l.email, status: l.status })));
