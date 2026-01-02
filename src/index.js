@@ -49,14 +49,14 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 // Email configuration with nodemailer
-// Using SendGrid for reliability (Gmail often times out on Render)
+// Using Mailgun for reliability (free tier available, very reliable on Render)
 const emailTransporter = nodemailer.createTransport({
-  host: 'smtp.sendgrid.net',
+  host: 'smtp.mailgun.org',
   port: 587,
   secure: false,
   auth: {
-    user: 'apikey',
-    pass: process.env.SENDGRID_API_KEY || process.env.EMAIL_PASSWORD || 'your-sendgrid-api-key'
+    user: process.env.MAILGUN_SMTP_USER || process.env.EMAIL_USER || 'postmaster@sandbox.mailgun.org',
+    pass: process.env.MAILGUN_SMTP_PASSWORD || process.env.EMAIL_PASSWORD || 'your-mailgun-password'
   }
 });
 
@@ -228,6 +228,193 @@ app.get('/', (req, res) => {
   res.json({ status: 'ok' });
 });
 
+// Success page after Stripe payment - displays license key
+app.get('/pro/success', (req, res) => {
+  const licenseKey = req.query.license_key || 'NOT_PROVIDED';
+  
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🎉 Payment Successful - SkyPost Pro</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      max-width: 600px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    h1 { color: #333; margin-bottom: 10px; font-size: 32px; }
+    p { color: #666; margin: 15px 0; font-size: 16px; line-height: 1.6; }
+    .license-box {
+      background: #f5f5f5;
+      border: 2px solid #667eea;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 30px 0;
+      font-family: 'Courier New', monospace;
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      word-break: break-all;
+    }
+    .button-group {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      margin-top: 30px;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 12px 24px;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-secondary {
+      background: #e0e0e0;
+      color: #333;
+    }
+    .btn-secondary:hover { background: #d0d0d0; }
+    .instructions {
+      background: #fffbea;
+      border-left: 4px solid #ffc107;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: left;
+      margin-top: 20px;
+    }
+    .instructions ol {
+      margin-left: 20px;
+      text-align: left;
+    }
+    .instructions li { margin: 8px 0; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>🎉 Payment Successful!</h1>
+    <p>Welcome to SkyPost Pro! Your license has been activated.</p>
+    
+    <div class="license-box" id="license-display">${licenseKey}</div>
+    
+    <p><strong>👆 Your License Key - Save it!</strong></p>
+    
+    <div class="button-group">
+      <button class="btn-primary" onclick="copyLicense()">📋 Copy License Key</button>
+      <button class="btn-secondary" onclick="closeWindow()">✖ Close</button>
+    </div>
+    
+    <div class="instructions">
+      <p><strong>Next Steps:</strong></p>
+      <ol>
+        <li>Copy your license key above</li>
+        <li>Return to the SkyPost extension</li>
+        <li>Open Settings → License</li>
+        <li>Paste your key in the input field</li>
+        <li>Click "Activate"</li>
+        <li>Enjoy Pro features! 🚀</li>
+      </ol>
+    </div>
+  </div>
+  
+  <script>
+    function copyLicense() {
+      const text = document.getElementById('license-display').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        alert('✅ License key copied to clipboard!');
+      });
+    }
+    
+    function closeWindow() {
+      window.close();
+    }
+  </script>
+</body>
+</html>
+  `;
+  
+  res.send(html);
+});
+
+// Cancel page - user cancelled payment
+app.get('/pro/cancel', (req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Cancelled - SkyPost Pro</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      max-width: 500px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      text-align: center;
+    }
+    h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
+    p { color: #666; margin: 15px 0; font-size: 16px; }
+    button {
+      padding: 12px 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:hover { opacity: 0.9; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Payment Cancelled</h1>
+    <p>Your payment was not completed. You can try again anytime from the SkyPost extension.</p>
+    <button onclick="window.close()">Close</button>
+  </div>
+</body>
+</html>
+  `;
+  res.send(html);
+});
+
 // Register user and generate license
 app.post('/api/auth/register', (req, res) => {
   try {
@@ -390,8 +577,8 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
       ],
       mode: 'subscription',
       customer_email: email || undefined,
-      success_url: success_url || 'https://skypost.app/pro/success',
-      cancel_url: cancel_url || 'https://skypost.app/pro/cancel',
+      success_url: `https://skypost-license-backend.onrender.com/pro/success?license_key=${licenseKey}`,
+      cancel_url: 'https://skypost-license-backend.onrender.com/pro/cancel',
       client_reference_id: licenseKey,
       metadata: {
         license_key: licenseKey,
