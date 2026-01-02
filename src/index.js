@@ -58,10 +58,10 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res)
       process.env.STRIPE_WEBHOOK_SECRET
     );
 
-    if (event.type === 'charge.succeeded') {
-      const charge = event.data.object;
-      const licenseKey = charge.metadata?.license_key;
-      const deviceId = charge.metadata?.device_id;
+    if (event.type === 'checkout.session.completed') {
+      const session = event.data.object;
+      const licenseKey = session.metadata?.license_key;
+      const deviceId = session.metadata?.device_id;
 
       if (licenseKey && deviceId) {
         const db = readDatabase();
@@ -71,21 +71,9 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), (req, res)
           license.tier = 'pro';
           license.status = 'active';
           license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+          writeDatabase(db);
+          console.log(`✅ License ${licenseKey} upgraded to Pro (from checkout session)`);
         }
-
-        // Record payment
-        db.payments.push({
-          id: uuidv4(),
-          license_key: licenseKey,
-          device_id: deviceId,
-          amount: charge.amount,
-          currency: charge.currency,
-          stripe_charge_id: charge.id,
-          created_at: new Date().toISOString()
-        });
-
-        writeDatabase(db);
-        console.log(`✅ License ${licenseKey} upgraded to Pro`);
       }
     }
 
