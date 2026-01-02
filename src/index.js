@@ -84,7 +84,7 @@ async function sendLicenseEmail(email, licenseKey) {
           <li>Unlimited notes</li>
           <li>Advanced formatting</li>
           <li>Priority support</li>
-          <li>Works on all devices with your license key</li>
+          <li>Works on all devices with your licenst ae key</li>
         </ul>
         
         <p style="color: #666; font-size: 12px; margin-top: 30px;">
@@ -122,17 +122,29 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
     // Handle successful charge (payment completed)
     if (event.type === 'charge.succeeded') {
       const charge = event.data.object;
-      const customerId = charge.customer;
       
-      // Find the license with this pending status
+      // Find the license by looking for pending licenses with email
       const db = readDatabase();
       let license = null;
       
-      // Try to find by Stripe customer ID first
-      license = db.licenses.find(l => l.stripe_customer_id === customerId && l.status === 'pending');
+      // Get email from Stripe charge
+      const stripeEmail = charge.billing_details?.email;
+      
+      // Find the first pending license with matching email
+      if (stripeEmail) {
+        license = db.licenses.find(l => l.email === stripeEmail && l.status === 'pending');
+      }
+      
+      // If not found by email, find the most recent pending license (fallback)
+      if (!license) {
+        const pendingLicenses = db.licenses.filter(l => l.status === 'pending');
+        if (pendingLicenses.length > 0) {
+          license = pendingLicenses[pendingLicenses.length - 1];
+        }
+      }
       
       if (license) {
-        const email = license.email || charge.billing_details?.email;
+        const email = license.email || stripeEmail;
         
         if (email) {
           license.status = 'active';
@@ -144,7 +156,11 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
           // Send license email
           await sendLicenseEmail(email, license.key);
           console.log(`✅ License activated: ${license.key} for ${email}`);
+        } else {
+          console.log(`⚠️ License ${license.key} has no email, skipping email send`);
         }
+      } else {
+        console.log(`⚠️ No pending license found for charge ${charge.id}`);
       }
     }
 
