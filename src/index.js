@@ -15,10 +15,9 @@ const nodemailer = require('nodemailer');
 const { Pool } = require('pg');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = 3000; // Hardcoded for testing
 
-console.log('🔧 PORT environment variable:', process.env.PORT);
-console.log('🔧 Will listen on port:', PORT);
+console.log('🔧 PORT hardcoded to: 3000');
 
 // PostgreSQL connection (from DATABASE_URL on Render)
 let pool = null;
