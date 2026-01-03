@@ -1,0 +1,380 @@
+// Background service worker - Opens workspace as popup window and handles scheduled posts
+
+const STORAGE_KEY = 'floatingNotes';
+const SCHEDULE_CHECK_ALARM = 'checkScheduledPosts';
+
+// Global error handlers
+try {
+  self.addEventListener && self.addEventListener('error', (e) => {
+    // Handle errors silently
+  });
+  self.addEventListener && self.addEventListener('unhandledrejection', (e) => {
+    // Handle rejections silently
+  });
+} catch (e) {
+  // ignore
+}
+
+chrome.browserAction.onClicked.addListener((tab) => {
+  
+  // Open workspace.html in a new tab
+  const windowUrl = chrome.runtime.getURL('workspace.html');
+  
+  chrome.tabs.create({
+    url: windowUrl
+  }, (newTab) => {
+    if (!newTab) {
+      console.error('[Background] Failed to create tab');
+    }
+  });
+});
+
+// Listen for messages from popup or content scripts
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === 'openWorkspace') {
+    const windowUrl = chrome.runtime.getURL('workspace.html');
+    chrome.tabs.create({ url: windowUrl }, (tab) => {
+      sendResponse({ success: !!tab });
+    });
+    return true;
+  }
+});
+
+// Set up alarm to check scheduled posts every minute
+try {
+  chrome.alarms.create(SCHEDULE_CHECK_ALARM, { periodInMinutes: 1 });
+} catch (error) {
+  console.warn('[Background] Failed to create alarm:', error);
+}
+
+// Listen for alarm
+try {
+  chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === SCHEDULE_CHECK_ALARM) {
+      checkAndPostScheduledNotes();
+    }
+  });
+} catch (error) {
+  console.warn('[Background] Failed to register alarm listener:', error);
+}
+
+// Keep-alive connection from workspace during development to make debugging easier
+try {
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port && port.name === 'dev-keep-alive') {
+      console.log('[Background] dev-keep-alive port connected');
+      port.onDisconnect.addListener(() => {
+        console.log('[Background] dev-keep-alive port disconnected');
+      });
+    }
+  });
+} catch (e) {
+  // ignore if runtime not available
+}
+
+// Message handler for debug actions from workspace
+try {
+  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    try {
+      if (msg && msg.action === 'postNow' && msg.noteId) {
+        console.log('[Background] Received postNow for id:', msg.noteId);
+        // Load notes and find the note
+        chrome.storage.local.get([STORAGE_KEY], async (result) => {
+          const notes = result[STORAGE_KEY] || [];
+          const note = notes.find(n => n.id === msg.noteId);
+          if (note) {
+            await postScheduledNote(note);
+            sendResponse({ ok: true });
+          } else {
+            console.warn('[Background] postNow: note not found', msg.noteId);
+            sendResponse({ ok: false, error: 'not found' });
+          }
+        });
+        // return true to indicate we'll send response asynchronously
+        return true;
+      }
+    } catch (err) {
+      console.error('[Background] onMessage handler error:', err);
+    }
+  });
+} catch (e) {
+  // ignore
+}
+async function checkAndPostScheduledNotes() {
+  try {
+    const result = await new Promise((resolve, reject) => {
+      chrome.storage.local.get([STORAGE_KEY], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result);
+        }
+      });
+    });
+
+    let notes = result[STORAGE_KEY] || [];
+    
+    // If no notes in chrome.storage, this might be running in a context where notes are stored differently
+    // Log what we found
+    
+    const now = Date.now();
+    let needsUpdate = false;
+
+
+    for (const note of notes) {
+      if (note.status === 'scheduled' && note.scheduledFor) {
+        // scheduledFor is now a timestamp (ms)
+        const timeUntil = note.scheduledFor - now;
+        
+        if (timeUntil <= 0) {
+          const statusBefore = note.status;
+          await postScheduledNote(note);
+          needsUpdate = true;
+        }
+      } else if (note.status === 'scheduled') {
+      }
+    }
+
+    if (needsUpdate) {
+      // Save updated notes to chrome.storage.local
+      await new Promise((resolve, reject) => {
+        chrome.storage.local.set({ [STORAGE_KEY]: notes }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('[Background] SAVE FAILED:', chrome.runtime.lastError);
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
+        });
+      });
+    }
+  } catch (error) {
+    console.error('[Background] Error checking scheduled posts:', error);
+  }
+}
+
+async function postScheduledNote(note) {
+  try {
+    
+    // Get Bluesky session
+    const sessionResult = await new Promise((resolve, reject) => {
+      chrome.storage.local.get(['blueskySession'], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result);
+        }
+      });
+    });
+
+    let session = sessionResult['blueskySession'];
+    
+    if (!session || !session.accessJwt) {
+      console.error('[Background] BLOCKING: No Bluesky session available');
+      console.error('[Background] Session object:', session);
+      console.error('[Background] AccessJwt present:', session?.accessJwt ? 'yes' : 'no');
+      note.status = 'failed';
+      note.failureReason = 'No Bluesky session available';
+      return;
+    }
+
+    // Try to refresh token if we have a refresh token
+    if (session.refreshJwt) {
+      try {
+        const refreshResponse = await fetch('https://bsky.social/xrpc/com.atproto.server.refreshSession', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.refreshJwt}`,
+          },
+        });
+
+        if (refreshResponse.ok) {
+          const newSession = await refreshResponse.json();
+          session = {
+            did: session.did,
+            handle: session.handle,
+            accessJwt: newSession.accessJwt,
+            refreshJwt: newSession.refreshJwt || session.refreshJwt,
+          };
+          
+          // Save the refreshed session
+          await new Promise((resolve) => {
+            chrome.storage.local.set({ 'blueskySession': session }, () => {
+              resolve();
+            });
+          });
+        } else {
+          console.warn('[Background] Token refresh failed:', refreshResponse.status);
+          // Continue with old token and see if it works
+        }
+      } catch (refreshError) {
+        console.error('[Background] Error refreshing token:', refreshError.message);
+        // Continue with old token and see if it works
+      }
+    }
+
+
+    // Strip HTML and images from content for plain text
+    let cleanContent = note.content || '';
+    
+    console.log('[Background] Processing note:', {
+      title: note.title,
+      hasContent: !!note.content,
+      hasCustomPreview: !!note.customLinkPreview,
+      previewUrl: note.customLinkPreview?.url
+    });
+
+    // Convert <br> to newlines
+    cleanContent = cleanContent.replace(/<br\s*\/?>/g, '\n');
+    
+    // Remove image tags and all HTML
+    cleanContent = cleanContent.replace(/<img[^>]*>/g, '');
+    cleanContent = cleanContent.replace(/<[^>]*>/g, '');
+    cleanContent = cleanContent.trim();
+    
+    // If there's a custom link preview, remove the URL from the text
+    let finalText = cleanContent;
+    if (note.customLinkPreview && note.customLinkPreview.url) {
+      // Remove the URL from the text (same pattern as detectLinks does)
+      const urlPattern = /(https?:\/\/[^\s]+)/g;
+      finalText = cleanContent.replace(urlPattern, '').trim();
+    }
+    
+    // Build post record with plain text
+    const postRecord = {
+      $type: 'app.bsky.feed.post',
+      text: finalText,
+      createdAt: new Date().toISOString(),
+    };
+    // Handle custom link preview if present
+    let hasLinkPreview = false;
+    if (note.customLinkPreview && note.customLinkPreview.url) {
+      const preview = note.customLinkPreview;
+      postRecord.embed = {
+        $type: 'app.bsky.embed.external',
+        external: {
+          uri: preview.url,
+          title: preview.title || '',
+          description: preview.description || '',
+        },
+      };
+      
+      // If preview has an image, fetch and upload it as a blob
+      if (preview.image) {
+        try {
+          const imageResponse = await fetch(preview.image);
+          const imageBlob = await imageResponse.blob();
+          
+          // Upload blob to AT Protocol
+          const uploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
+            method: 'POST',
+            headers: {
+              'Content-Type': imageBlob.type || 'image/jpeg',
+              'Authorization': `Bearer ${session.accessJwt}`,
+            },
+            body: imageBlob,
+          });
+
+          if (uploadResponse.ok) {
+            const uploadData = await uploadResponse.json();
+            postRecord.embed.external.thumb = uploadData.blob;
+            console.log('[Background] Added image thumb to link embed');
+          } else {
+            console.warn('[Background] Image upload failed for link preview');
+          }
+        } catch (imageError) {
+          console.warn('[Background] Error fetching/uploading preview image:', imageError.message);
+        }
+      }
+      
+      hasLinkPreview = true;
+      console.log('[Background] Created link embed:', postRecord.embed);
+    } else {
+      console.log('[Background] No customLinkPreview found');
+    }
+
+    // Handle image if present - upload separately as embed (only if no link preview)
+    if (!hasLinkPreview && note.content && note.content.includes('<img')) {
+      const imgMatch = note.content.match(/<img[^>]+src="([^"]+)"/);
+      if (imgMatch && imgMatch[1]) {
+        const imageDataUrl = imgMatch[1];
+        
+        // Convert data URL to blob
+        const response = await fetch(imageDataUrl);
+        const blob = await response.blob();
+        
+        // Upload blob to AT Protocol
+        const uploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
+          method: 'POST',
+          headers: {
+            'Content-Type': blob.type || 'image/jpeg',
+            'Authorization': `Bearer ${session.accessJwt}`,
+          },
+          body: blob,
+        });
+
+        if (uploadResponse.ok) {
+          const uploadData = await uploadResponse.json();
+          postRecord.embed = {
+            $type: 'app.bsky.embed.images',
+            images: [{
+              image: uploadData.blob,
+              alt: note.title,
+            }],
+          };
+        } else {
+          console.warn('[Background] Image upload failed, posting without image');
+        }
+      }
+    }
+
+    // Post to Bluesky
+    console.log('[Background] Posting to Bluesky with record:', postRecord);
+    const postResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.createRecord', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.accessJwt}`,
+      },
+      body: JSON.stringify({
+        repo: session.did,
+        collection: 'app.bsky.feed.post',
+        record: postRecord,
+      }),
+    });
+
+    if (postResponse.ok) {
+      note.status = 'published';
+      const timestamp = Date.now();
+      note.postedAt = timestamp;
+      
+      // Initialize postHistory if it doesn't exist
+      if (!note.postHistory) {
+        note.postHistory = [];
+      }
+      // Add this post to history
+      note.postHistory.push(timestamp);
+      
+      note.failureReason = null;
+    } else {
+      const error = await postResponse.text();
+      console.error('[Background] Post failed with status:', postResponse.status);
+      console.error('[Background] Post error response:', error);
+      note.status = 'failed';
+      note.failureReason = `API error (${postResponse.status}): ${error.substring(0, 100)}`;
+    }
+  } catch (error) {
+    console.error('[Background] CRITICAL ERROR posting scheduled note:', error);
+    console.error('[Background] Error details:', {
+      message: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    note.status = 'failed';
+    note.failureReason = error.message;
+  }
+}
+
+
+

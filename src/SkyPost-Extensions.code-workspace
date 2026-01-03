@@ -1,0 +1,14 @@
+{
+	"folders": [
+		{
+			"path": "../../SkyPost-Extensions"
+		},
+		{
+			"path": "../../Extensions"
+		},
+		{
+			"path": ".."
+		}
+	],
+	"settings": {}
+}

@@ -1,0 +1,118 @@
+// License management for Pro features
+class LicenseManager {
+  constructor() {
+    this.LICENSE_KEY = 'proLicenseKey';
+    this.LICENSE_EXPIRY = 'proLicenseExpiry';
+    this.loadLicense();
+  }
+
+  loadLicense() {
+    chrome.storage.local.get([this.LICENSE_KEY, this.LICENSE_EXPIRY], (result) => {
+      this.licenseKey = result[this.LICENSE_KEY];
+      this.licenseExpiry = result[this.LICENSE_EXPIRY];
+    });
+  }
+
+  // Check if user has valid pro license
+  isProUser() {
+    if (!this.licenseKey) return false;
+    if (!this.licenseExpiry) return false;
+    return new Date(this.licenseExpiry) > new Date();
+  }
+
+  // Get remaining days
+  getRemainingDays() {
+    if (!this.isProUser()) return 0;
+    const expiry = new Date(this.licenseExpiry);
+    const now = new Date();
+    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    return Math.max(0, days);
+  }
+
+  // Activate license (called after payment)
+  async activateLicense(licenseKey) {
+    try {
+      // For testing: Accept test license key
+      if (licenseKey === 'BLUESKY-PRO-TEST-2025-UNLIMITED') {
+        const expiresAt = new Date();
+        expiresAt.setFullYear(expiresAt.getFullYear() + 1); // 1 year from now
+        
+        await new Promise((resolve) => {
+          chrome.storage.local.set({
+            [this.LICENSE_KEY]: licenseKey,
+            [this.LICENSE_EXPIRY]: expiresAt.toISOString()
+          }, resolve);
+        });
+
+        this.licenseKey = licenseKey;
+        this.licenseExpiry = expiresAt.toISOString();
+        return { success: true, message: '✅ Test license activated! Valid for 1 year.' };
+      }
+
+      // For production: Verify license key with backend
+      const response = await fetch('https://skypost-license.loca.lt/api/licenses/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ licenseKey })
+      });
+
+      if (!response.ok) {
+        throw new Error('Invalid license key');
+      }
+
+      const data = await response.json();
+      
+      // Store license
+      await new Promise((resolve) => {
+        chrome.storage.local.set({
+          [this.LICENSE_KEY]: licenseKey,
+          [this.LICENSE_EXPIRY]: data.expiresAt
+        }, resolve);
+      });
+
+      this.licenseKey = licenseKey;
+      this.licenseExpiry = data.expiresAt;
+      return { success: true, message: '✅ License activated!' };
+    } catch (error) {
+      console.error('[License] Activation failed:', error.message);
+      return { success: false, message: 'Invalid license key or network error' };
+    }
+  }
+
+  // Check if feature is available
+  canUseFeature(feature) {
+    // Free features everyone can use
+    const freeFeatures = ['basicScheduling', 'manualPosts', 'linkCards', 'imageUpload', 'lists'];
+    if (freeFeatures.includes(feature)) return true;
+
+    // Pro features require license
+    const proFeatures = ['bulkScheduling', 'postAnalytics', 'templates', 'bestTimeToPost', 'advancedPreviews', 'analytics'];
+    if (proFeatures.includes(feature)) {
+      return this.isProUser();
+    }
+
+    return false;
+  }
+
+  // Get feature list
+  getFeatureList() {
+    return {
+      free: [
+        { name: 'Manual posts', feature: 'manualPosts' },
+        { name: 'Basic scheduling', feature: 'basicScheduling', limit: '5 pending' },
+        { name: 'Link previews', feature: 'linkCards' },
+        { name: 'Image uploads', feature: 'imageUpload' }
+      ],
+      pro: [
+        { name: 'Unlimited scheduling', feature: 'bulkScheduling' },
+        { name: 'Post analytics', feature: 'postAnalytics' },
+        { name: 'Best time to post', feature: 'bestTimeToPost' },
+        { name: 'Post templates', feature: 'templates' },
+        { name: 'Advanced previews', feature: 'advancedPreviews' }
+      ]
+    };
+  }
+}
+
+// Create global instance
+const licenseManager = new LicenseManager();

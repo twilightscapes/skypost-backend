@@ -1,0 +1,1710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'; connect-src *; style-src 'self' 'unsafe-inline';">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      overflow: hidden;
+      background: #fafafa;
+    }
+
+    .background-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      opacity: 0;
+      z-index: -1;
+      transition: opacity 0.3s;
+    }
+
+    .background-overlay::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.3);
+    }
+
+    .workspace {
+      display: flex;
+      width: 100%;
+      height: 100vh;
+      background: linear-gradient(to bottom, #e8e8e8, #f5f5f5);
+      gap: 1px;
+    }
+
+    .workspace > * {
+      flex: 1;
+      height: 100%;
+    }
+
+    /* SIDEBAR - Notes List */
+    .sidebar {
+      width: 300px;
+      background: linear-gradient(to bottom, #e8e8e8, #f5f5f5);
+      border-right: 1px solid #e5e7eb;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      height: 100%;
+    }
+
+    .sidebar-header {
+      padding: 1rem 1.5rem;
+      background: #00a8e8;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      height: 60px;
+    }
+
+    .sidebar-header h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+
+    .sidebar-header button {
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      width: 32px;
+      height: 32px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s;
+    }
+
+    .sidebar-header button:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+
+    .sidebar-actions {
+      padding: 1rem;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .sidebar-actions button {
+      flex: 1;
+      min-width: 80px;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .sidebar-actions select {
+      flex: 1;
+      min-width: 100px;
+      padding: 0.5rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      cursor: pointer;
+    }
+
+    .btn-new {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-new:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-clear {
+      background: #f3f4f6;
+      color: #ef4444;
+      border: 1px solid #fecaca;
+    }
+
+    .btn-clear:hover {
+      background: #fee2e2;
+    }
+
+    .btn-backup {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      flex: 1;
+      min-width: 80px;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .btn-backup:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+
+    .btn-restore {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      color: white;
+      flex: 1;
+      min-width: 80px;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+
+    .btn-restore:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .backup-status {
+      padding: 0.5rem 1rem;
+      font-size: 0.75rem;
+      color: #6b7280;
+      background: #f3f4f6;
+      border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+      text-align: center;
+    }
+
+    .backup-status.success {
+      color: #059669;
+      background: #ecfdf5;
+    }
+
+    .backup-status.error {
+      color: #dc2626;
+      background: #fef2f2;
+    }
+
+    .restore-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 9999;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .restore-modal.active {
+      display: flex;
+    }
+
+    .restore-modal-content {
+      background: white;
+      border-radius: 8px;
+      padding: 2rem;
+      max-width: 500px;
+      width: 90%;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    }
+
+    .restore-modal h2 {
+      margin-bottom: 1rem;
+      color: #1f2937;
+      font-size: 1.5rem;
+    }
+
+    .restore-drop-zone {
+      border: 2px dashed #e5e7eb;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      background: #f9fafb;
+      margin-bottom: 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .restore-drop-zone:hover {
+      border-color: #3b82f6;
+      background: #eff6ff;
+    }
+
+    .restore-drop-zone.dragover {
+      border-color: #3b82f6;
+      background: #dbeafe;
+    }
+
+    .restore-drop-zone input {
+      display: none;
+    }
+
+    .restore-preview {
+      background: #f3f4f6;
+      border-radius: 6px;
+      padding: 1rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .restore-preview.active {
+      display: block;
+    }
+
+    .restore-preview-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 0.5rem 0;
+      font-size: 0.875rem;
+      color: #374151;
+    }
+
+    .restore-preview-label {
+      font-weight: 600;
+      color: #1f2937;
+    }
+
+    .restore-modal-buttons {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .restore-modal-buttons button {
+      flex: 1;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+      font-size: 0.875rem;
+    }
+
+    .restore-btn-cancel {
+      background: #e5e7eb;
+      color: #374151;
+    }
+
+    .restore-btn-cancel:hover {
+      background: #d1d5db;
+    }
+
+    .restore-btn-confirm {
+      background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+      color: white;
+    }
+
+    .restore-btn-confirm:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+
+    .restore-btn-confirm:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .restore-progress {
+      margin-top: 1rem;
+      padding: 1rem;
+      background: #f3f4f6;
+      border-radius: 6px;
+      text-align: center;
+      color: #374151;
+      font-size: 0.875rem;
+      display: none;
+    }
+
+    .restore-progress.active {
+      display: block;
+    }
+
+    .notes-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .notes-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .notes-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .notes-list::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 3px;
+    }
+
+    .notes-list::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .note-card {
+      padding: 1rem;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: 2px solid transparent;
+      display: flex;
+      justify-content: space-between;
+      align-items: start;
+      gap: 0.5rem;
+      background: white;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    }
+
+    .note-card:hover {
+      transform: translateX(4px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+
+    .note-card.active {
+      border-color: #667eea;
+      background: #f0f4ff;
+    }
+
+    .note-card-content {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .note-card-color {
+      width: 4px;
+      height: 100%;
+      border-radius: 4px;
+      flex-shrink: 0;
+      min-height: 60px;
+    }
+
+    .note-card-title {
+      font-weight: 600;
+      font-size: 0.9rem;
+      color: #1f2937;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      margin-bottom: 0.25rem;
+    }
+
+    .note-card-preview {
+      font-size: 0.8rem;
+      color: #6b7280;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 200px;
+    }
+
+    .note-card-delete {
+      background: transparent;
+      border: none;
+      color: #ef4444;
+      cursor: pointer;
+      padding: 0.25rem;
+      font-size: 1.2rem;
+      opacity: 0;
+      transition: opacity 0.2s;
+      flex-shrink: 0;
+    }
+
+    .note-card:hover .note-card-delete {
+      opacity: 1;
+    }
+
+    .note-card-delete:hover {
+      color: #dc2626;
+    }
+
+    .note-card-share {
+      background: transparent;
+      border: none;
+      color: #3b82f6;
+      cursor: pointer;
+      padding: 0.25rem;
+      font-size: 1.2rem;
+      opacity: 0;
+      transition: opacity 0.2s;
+      margin-right: 0.5rem;
+      pointer-events: auto;
+      flex-shrink: 0;
+    }
+
+    .note-card:hover .note-card-share {
+      opacity: 1;
+    }
+
+    .note-card-share:hover {
+      color: #1d4ed8;
+      transform: scale(1.1);
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #9ca3af;
+      text-align: center;
+      padding: 2rem;
+    }
+
+    .empty-state-icon {
+      font-size: 3rem;
+      margin-bottom: 1rem;
+      opacity: 0.5;
+    }
+
+    /* MAIN EDITOR AREA */
+    .editor-container {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: linear-gradient(to bottom, #e8e8e8, #f5f5f5);
+      border-right: 1px solid #e5e7eb;
+      height: 100%;
+    }
+
+    .editor-header {
+      padding: 1rem 1.5rem;
+      background: #00a8e8;
+      color: white;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      height: 60px;
+    }
+
+    .editor-title-input {
+      flex: 1;
+      background: rgba(255, 255, 255, 0.2);
+      border: none;
+      color: white;
+      font-size: 1.5rem;
+      font-weight: 700;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      outline: none;
+      font-family: inherit;
+    }
+
+    .editor-title-input::placeholder {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .editor-toolbar {
+      padding: 1rem 1.5rem;
+      background: #f9fafb;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+
+    .toolbar-btn {
+      padding: 0.5rem 0.75rem;
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.9rem;
+      transition: all 0.2s;
+      color: #1f2937;
+      min-width: 40px;
+      text-align: center;
+    }
+
+    .toolbar-btn:hover {
+      background: #f0f4ff;
+      border-color: #667eea;
+    }
+
+    .toolbar-divider {
+      width: 1px;
+      background: #d1d5db;
+      margin: 0 0.25rem;
+    }
+
+    .color-picker-container {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .color-picker-popup {
+      position: absolute;
+      top: calc(100% + 8px);
+      left: 50%;
+      transform: translateX(-50%);
+      background: white;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      padding: 0.75rem;
+      display: none;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+      width: 180px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+    }
+
+    .color-picker-popup.visible {
+      display: flex;
+    }
+
+    .color-dot {
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .color-dot:hover {
+      transform: scale(1.1);
+    }
+
+    .color-dot.selected {
+      border-color: #1f2937;
+      box-shadow: 0 0 0 2px white, 0 0 0 4px #1f2937;
+    }
+
+    .editor-content {
+      flex: 1;
+      padding: 2rem;
+      overflow-y: auto;
+      background: white;
+    }
+
+    .editor-content::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    .editor-content::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .editor-content::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+
+    .editor-content::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+
+    .rich-editor {
+      min-height: 200px;
+      max-width: 800px;
+      outline: none;
+      font-size: 1rem;
+      line-height: 1.6;
+      word-wrap: break-word;
+      color: #1f2937;
+      background: white;
+    }
+
+    .rich-editor:focus {
+      outline: 2px solid #667eea;
+      outline-offset: -1px;
+      border-radius: 4px;
+      padding: 0.5rem;
+    }
+
+    .char-counter {
+      padding: 0.75rem 1.5rem;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      font-size: 0.85rem;
+      color: #6b7280;
+      text-align: right;
+      flex-shrink: 0;
+    }
+
+    .char-counter.warning {
+      color: #f59e0b;
+      background: #fffbeb;
+    }
+
+    .char-counter.error {
+      color: #ef4444;
+      background: #fef2f2;
+    }
+
+    .editor-footer {
+      padding: 1.5rem;
+      background: #f9fafb;
+      border-top: 1px solid #e5e7eb;
+      display: flex;
+      gap: 0.75rem;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+    }
+
+    .btn-delete {
+      order: 1;
+      padding: 0.75rem 1.5rem;
+      background: #fee2e2;
+      color: #ef4444;
+      border: 1px solid #fecaca;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-schedule {
+      order: 2;
+      flex: 1;
+      margin: 0 0.75rem;
+    }
+
+    .btn-save {
+      order: 3;
+      padding: 0.75rem 1.5rem;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-save:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-delete:hover {
+      background: #fecaca;
+    }
+
+    .btn-schedule {
+      padding: 0.75rem 1.5rem;
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .btn-schedule:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    /* Sidebar sections */
+    .sidebar-section {
+      margin-bottom: 1rem;
+    }
+
+    .sidebar-section-title {
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #9ca3af;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.5px;
+    }
+
+    .section-header {
+      font-weight: 700;
+      text-transform: uppercase;
+      color: #9ca3af;
+      padding: 0.5rem 0.75rem;
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.5px;
+    }
+
+    .notes-section {
+      margin-bottom: 1.5rem;
+    }
+
+    .note-status-badge {
+      display: inline-block;
+      font-size: 0.65rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      font-weight: 600;
+      margin-left: 0.5rem;
+    }
+
+    .status-badge {
+      display: inline-block;
+      font-size: 0.7rem;
+      padding: 0.25rem 0.5rem;
+      border-radius: 3px;
+      font-weight: 600;
+      margin-top: 0.25rem;
+    }
+
+    .status-badge.scheduled {
+      background: #dbeafe;
+      color: #0284c7;
+    }
+
+    .status-badge.published {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .status-badge.expired {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .status-badge.failed {
+      background: #fee2e2;
+      color: #dc2626;
+      cursor: help;
+    }
+
+    .status-scheduled {
+      background: #dbeafe;
+      color: #0284c7;
+    }
+
+    .status-published {
+      background: #dcfce7;
+      color: #15803d;
+    }
+
+    .status-failed {
+      background: #fee2e2;
+      color: #dc2626;
+    }
+
+    .note-card-time {
+      font-size: 0.75rem;
+      color: #9ca3af;
+      margin-top: 0.25rem;
+    }
+
+    /* Schedule Modal */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 2000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-overlay.visible {
+      display: flex;
+    }
+
+    .modal-dialog {
+      background: white;
+      border-radius: 12px;
+      padding: 2rem;
+      width: 90%;
+      max-width: 400px;
+      box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
+    }
+
+    .modal-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: #1f2937;
+    }
+
+    .modal-group {
+      margin-bottom: 1.5rem;
+    }
+
+    .modal-label {
+      display: block;
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #374151;
+    }
+
+    .modal-input {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      font-size: 1rem;
+      font-family: inherit;
+      color: #1f2937;
+      background: white;
+    }
+
+    .modal-input::-webkit-calendar-picker-indicator {
+      cursor: pointer;
+    }
+
+    .modal-buttons {
+      display: flex;
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+
+    .modal-btn {
+      flex: 1;
+      padding: 0.75rem;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: all 0.2s;
+    }
+
+    .modal-btn-schedule {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: white;
+    }
+
+    .modal-btn-schedule:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+    }
+
+    .modal-btn-cancel {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    .modal-btn-cancel:hover {
+      background: #e5e7eb;
+    }
+
+    .placeholder {
+      color: #d1d5db;
+      padding: 2rem;
+      text-align: center;
+      font-size: 1.1rem;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .sidebar {
+        width: 250px;
+      }
+
+      .editor-title-input {
+        font-size: 1.25rem;
+      }
+
+      .editor-content {
+        padding: 1rem;
+      }
+    }
+
+    @media (max-width: 600px) {
+      .workspace {
+        flex-direction: column;
+      }
+
+      .sidebar {
+        width: 100%;
+        height: 200px;
+        border-right: none;
+        border-bottom: 1px solid #e5e7eb;
+      }
+
+      .sidebar-actions {
+        padding: 0.5rem 0.75rem;
+        gap: 0.25rem;
+      }
+
+      .sidebar-actions button {
+        padding: 0.4rem 0.5rem;
+        font-size: 0.75rem;
+        min-width: 60px;
+      }
+
+      .filter-section {
+        padding: 0.5rem 0.75rem;
+      }
+
+      .filter-section > div:first-child {
+        font-size: 0.7rem;
+        margin-bottom: 0.25rem;
+      }
+
+      #color-filters {
+        gap: 0.25rem;
+      }
+
+      #color-filters > button {
+        width: 20px;
+        height: 20px;
+      }
+
+      .filter-btn {
+        padding: 0.3rem 0.5rem !important;
+        font-size: 0.7rem !important;
+      }
+
+      .editor-container {
+        flex: 1;
+      }
+
+      .bluesky-panel {
+        width: 100% !important;
+        min-width: unset !important;
+        max-width: unset !important;
+        border-left: none;
+        border-top: 1px solid #e5e7eb;
+      }
+
+      .editor-title-input {
+        font-size: 1.1rem;
+      }
+
+      .bluesky-panel {
+        min-width: 400px;
+      }
+    }
+
+    /* Bluesky Panel Styles */
+    .bluesky-panel {
+      display: flex;
+      flex-direction: column;
+      background: linear-gradient(to bottom, #f5f5f5, #fff);
+      border-left: 1px solid #e5e7eb;
+      min-width: 380px;
+      max-width: 450px;
+      overflow: hidden;
+    }
+
+    .bluesky-header {
+      background: #00a8e8;
+      color: white;
+      padding: 1rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-shrink: 0;
+      height: 60px;
+    }
+
+    .bluesky-header h3 {
+      font-size: 1.1rem;
+      font-weight: 600;
+    }
+
+    .bluesky-tab {
+      padding: 0.75rem;
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-weight: 500;
+      color: #6b7280;
+      flex: 1;
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s ease;
+    }
+
+    .bluesky-tab.active {
+      color: #0284c7;
+      border-bottom-color: #0284c7;
+    }
+
+    .bluesky-tab:hover {
+      color: #1f2937;
+    }
+
+    .bluesky-content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 1rem;
+    }
+
+    .bluesky-login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .bluesky-login-form label {
+      font-weight: 600;
+      color: #333;
+      font-size: 0.9rem;
+    }
+
+    .bluesky-login-form input {
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
+
+    .bluesky-login-form input:focus {
+      outline: none;
+      border-color: #00a8e8;
+      box-shadow: 0 0 0 3px rgba(0, 168, 232, 0.1);
+    }
+
+    .bluesky-login-btn {
+      background: linear-gradient(135deg, #00a8e8 0%, #0066cc 100%);
+      color: white;
+      border: none;
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .bluesky-login-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 168, 232, 0.3);
+    }
+
+    .bluesky-composer {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .bluesky-user-info {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      background: #f0f7ff;
+      border-radius: 6px;
+      margin-bottom: 0.5rem;
+    }
+
+    .bluesky-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #00a8e8, #0066cc);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+
+    .bluesky-handle {
+      font-weight: 600;
+      color: #0066cc;
+      flex: 1;
+    }
+
+    .bluesky-logout-btn {
+      background: #fee;
+      color: #c33;
+      border: 1px solid #fecaca;
+      padding: 0.5rem 0.75rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 0.8rem;
+      transition: all 0.2s;
+    }
+
+    .bluesky-logout-btn:hover {
+      background: #fdd;
+    }
+
+    .bluesky-textarea {
+      width: 100%;
+      padding: 0.75rem;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 100px;
+      max-height: 200px;
+      color: #1f2937;
+      background: white;
+    }
+
+    .bluesky-textarea:focus {
+      outline: none;
+      border-color: #00a8e8;
+      box-shadow: 0 0 0 3px rgba(0, 168, 232, 0.1);
+    }
+
+    .bluesky-char-count {
+      font-size: 0.8rem;
+      color: #666;
+      text-align: right;
+    }
+
+    .bluesky-char-count.warning {
+      color: #ff9800;
+    }
+
+    .bluesky-char-count.error {
+      color: #f44336;
+    }
+
+    .bluesky-actions {
+      display: flex;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+
+    .bluesky-post-btn {
+      background: linear-gradient(135deg, #00a8e8 0%, #0066cc 100%);
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 20px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex: 1;
+    }
+
+    .bluesky-post-btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 168, 232, 0.3);
+    }
+
+    .bluesky-post-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .bluesky-message {
+      cursor: not-allowed;
+    }
+
+    .bluesky-message {
+      padding: 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      margin-bottom: 1rem;
+      display: none;
+    }
+
+    .bluesky-message.error {
+      background: #fee;
+      color: #c33;
+      border: 1px solid #fecaca;
+    }
+
+    .bluesky-message.success {
+      background: #efe;
+      color: #3c3;
+      border: 1px solid #cfc;
+    }
+
+    /* Calendar Styles */
+    #calendar-view {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .calendar-month {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+    }
+
+    .calendar-header {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      font-weight: 600;
+      font-size: 0.8rem;
+      color: #6b7280;
+      text-align: center;
+    }
+
+    .calendar-header-day {
+      padding: 0.5rem 0;
+    }
+
+    .calendar-day {
+      aspect-ratio: 1;
+      background: #f3f4f6;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 0.5rem;
+      font-size: 0.75rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .calendar-day.other-month {
+      opacity: 0.3;
+    }
+
+    .calendar-day.has-posts {
+      background: #dbeafe;
+      border-color: #0284c7;
+    }
+
+    .calendar-day-number {
+      font-weight: 600;
+      color: #1f2937;
+      margin-bottom: 0.25rem;
+    }
+
+    .calendar-day-posts {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      flex: 1;
+      overflow-y: auto;
+    }
+
+    .calendar-post-item {
+      background: white;
+      border-left: 2px solid #0284c7;
+      padding: 0.25rem 0.5rem;
+      border-radius: 2px;
+      font-size: 0.65rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .calendar-post-item:hover {
+      background: #0284c7;
+      color: white;
+    }
+
+    .calendar-nav {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .calendar-nav button {
+      background: #e5e7eb;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .calendar-nav button:hover {
+      background: #d1d5db;
+    }
+
+    .calendar-month-year {
+      font-weight: 600;
+      font-size: 0.95rem;
+      color: #1f2937;
+    }
+
+    /* Pro Settings Modal */
+    #pro-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 10000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #pro-modal.active {
+      display: flex;
+    }
+
+    .pro-modal-content {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      width: 90%;
+      max-width: 600px;
+      max-height: 90vh;
+      overflow-y: auto;
+      padding: 0;
+    }
+
+    .pro-modal-header {
+      padding: 24px;
+      border-bottom: 1px solid #e5e7eb;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .pro-modal-header h1 {
+      font-size: 24px;
+      color: #333;
+      margin: 0;
+    }
+
+    .pro-modal-close {
+      background: none;
+      border: none;
+      font-size: 28px;
+      cursor: pointer;
+      color: #999;
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      transition: all 0.2s;
+    }
+
+    .pro-modal-close:hover {
+      background: #f5f5f5;
+      color: #333;
+    }
+
+    .pro-modal-body {
+      padding: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="workspace">
+    <!-- SIDEBAR -->
+    <div class="sidebar">
+      <div class="sidebar-header">
+        <h2>🦋 SkyPost</h2>
+        <div style="display: flex; gap: 0.5rem;">
+          <button id="pro-settings-btn" title="Pro Features & License" style="background: none; border: none; cursor: pointer;">⚙️</button>
+          <button id="close-workspace" title="Close workspace">✕</button>
+        </div>
+      </div>
+      
+      <div class="sidebar-actions">
+        <button class="btn-new" id="new-note-btn">+ New</button>
+        <button class="btn-clear" id="clear-all-btn">Clear All</button>
+      </div>
+
+      <div style="padding: 0.75rem 1rem; border-bottom: 1px solid rgba(0, 0, 0, 0.1); background: #f9fafb;">
+        <div style="font-size: 0.75rem; font-weight: 600; color: #6b7280; margin-bottom: 0.5rem; text-transform: uppercase;">Filters</div>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+          <!-- Type filters -->
+          <button class="filter-btn" data-filter="all" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">All</button>
+          <button class="filter-btn" data-filter="has-image" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Image</button>
+          <button class="filter-btn" data-filter="empty" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Empty</button>
+          
+          <!-- Status filters -->
+          <button class="filter-btn" data-filter="scheduled" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Scheduled</button>
+          <!-- <button class="filter-btn" data-filter="published" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Published</button> -->
+          
+          <!-- Color filter dropdown -->
+          <div style="position: relative;">
+            <button id="color-filter-btn" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Colors</button>
+            <div id="color-filter-menu" style="display: none; position: absolute; top: 100%; right: 0; background: white; border: 1px solid #d1d5db; border-radius: 4px; padding: 0.5rem; min-width: 180px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); z-index: 1000;">
+              <div id="color-filters" style="display: flex; gap: 0.5rem; flex-wrap: wrap;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="notes-list" id="notes-list">
+        <!-- All notes (dynamically populated by status) -->
+        <div id="all-notes-container"></div>
+
+        <div class="empty-state" id="empty-state">
+          <div class="empty-state-icon">📭</div>
+          <p>No posts yet</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Restore Modal -->
+    <div class="restore-modal" id="restore-modal">
+      <div class="restore-modal-content">
+        <h2>Restore from Backup</h2>
+        <div class="restore-drop-zone" id="restore-drop-zone">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📁</div>
+          <p style="margin-bottom: 0.5rem; color: #374151;">Drag and drop your backup file here</p>
+          <p style="color: #9ca3af; font-size: 0.85rem;">or</p>
+          <input type="file" id="restore-input" accept=".json" style="display: none;">
+          <button type="button" id="restore-browse-btn" style="margin-top: 0.5rem; padding: 0.5rem 1rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 600;">Browse Files</button>
+        </div>
+
+        <div class="restore-preview" id="restore-preview">
+          <h3 style="margin-bottom: 0.75rem; color: #1f2937; font-size: 1rem;">Backup Preview</h3>
+          <div class="restore-preview-item">
+            <span class="restore-preview-label">Date:</span>
+            <span id="restore-preview-date">-</span>
+          </div>
+          <div class="restore-preview-item">
+            <span class="restore-preview-label">Notes:</span>
+            <span id="restore-preview-notes">-</span>
+          </div>
+          <div class="restore-preview-item">
+            <span class="restore-preview-label">Settings:</span>
+            <span id="restore-preview-settings">-</span>
+          </div>
+        </div>
+
+        <div class="restore-progress" id="restore-progress">
+          <span id="restore-progress-text">Restoring...</span>
+        </div>
+
+        <div class="restore-modal-buttons">
+          <button type="button" class="restore-btn-cancel" id="restore-cancel-btn">Cancel</button>
+          <button type="button" class="restore-btn-confirm" id="restore-confirm-btn" disabled>Restore</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule Modal -->
+    <div class="modal-overlay" id="schedule-modal">
+      <div class="modal-dialog">
+        <h2 class="modal-title">Schedule Post</h2>
+        <form id="schedule-form">
+          <div class="modal-group">
+            <label class="modal-label">When do you want to post this?</label>
+            <input type="datetime-local" id="schedule-datetime" class="modal-input" required>
+          </div>
+
+          <!-- Link Preview for Scheduled Posts -->
+          <div id="schedule-link-preview-section" style="display: none; margin-bottom: 1rem;">
+            <label class="modal-label" style="margin-bottom: 0.5rem;">Link Preview</label>
+            <div id="schedule-link-preview" style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.75rem; background: #f9fafb;"></div>
+            <button type="button" id="schedule-link-edit-btn" style="margin-top: 0.5rem; padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.85rem; cursor: pointer;">✏️ Edit Preview</button>
+          </div>
+
+          <div class="modal-buttons">
+            <button type="button" class="modal-btn modal-btn-cancel" id="cancel-schedule">Cancel</button>
+            <button type="submit" class="modal-btn modal-btn-schedule">Schedule</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- EDITOR -->
+    <div class="editor-container">
+      <div class="editor-header">
+        <input type="text" class="editor-title-input" id="note-title" placeholder="Post title...">
+      </div>
+
+      <div class="editor-toolbar">
+        <div class="color-picker-container">
+          <button type="button" class="toolbar-btn" id="btn-color" title="Post Color">🎨</button>
+          <div class="color-picker-popup" id="color-picker"></div>
+        </div>
+        <button type="button" class="toolbar-btn" id="btn-image" title="Image">🖼️</button>
+      </div>
+
+      <div class="editor-content">
+        <textarea class="rich-editor" id="editor-content" placeholder="Click &quot;+ New&quot; to create a post or select one from the list to start editing..." style="resize: none; font-family: inherit; width: 100%; min-height: 200px; padding: 0.75rem; border: none; outline: none; font-size: 1rem; line-height: 1.5;"></textarea>
+      </div>
+
+      <div class="char-counter" id="char-counter">
+        <span id="char-count">0</span> / <span id="char-max">300</span>
+      </div>
+
+      <!-- Link Preview in Note Editor -->
+      <div id="editor-link-preview" style="display: none; margin: 0.75rem; border: 1px solid #e5e7eb; border-radius: 6px; padding: 0.5rem; background: #f9fafb;"></div>
+
+      <div class="editor-footer">
+        <button class="btn-delete" id="btn-delete">Delete</button>
+        <button class="btn-schedule" id="btn-schedule">Schedule</button>
+        <button class="btn-save" id="btn-save">Save</button>
+      </div>
+    </div>
+
+    <!-- BLUESKY PANEL -->
+    <div class="bluesky-panel">
+      <div class="bluesky-header">
+        <h3>🦋 Bluesky Posts</h3>
+      </div>
+      <div style="display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; background: white; padding: 0;">
+        <button id="tab-posts" class="bluesky-tab active" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; color: #0284c7; border-bottom: 2px solid #0284c7; margin-bottom: -2px;">Posts</button>
+        <button id="tab-calendar" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; color: #6b7280; margin-bottom: -2px;">Calendar</button>
+        <button id="tab-analytics" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; color: #6b7280; margin-bottom: -2px;">Analytics (Pro)</button>
+        <button id="tab-lists" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; color: #6b7280; margin-bottom: -2px;">Lists</button>
+      </div>
+
+      <div class="bluesky-content">
+        <div id="posts-tab-content">
+          <div id="bluesky-message" class="bluesky-message"></div>
+
+          <!-- Login Form -->
+          <div id="bluesky-login-container">
+            <form id="bluesky-login-form" class="bluesky-login-form">
+              <div>
+                <label>Email or Handle</label>
+                <input type="text" id="bsky-username" placeholder="you@example.com" required>
+              </div>
+              <div>
+                <label>Password</label>
+                <input type="password" id="bsky-password" placeholder="Your password" required>
+              </div>
+              <button type="submit" class="bluesky-login-btn">Login</button>
+            </form>
+          </div>
+
+          <!-- Composer -->
+          <div id="bluesky-composer-container" style="display: none;">
+            <div class="bluesky-user-info">
+              <div class="bluesky-avatar" id="bsky-avatar">🦋</div>
+              <div class="bluesky-handle" id="bsky-handle">Loading...</div>
+              <button class="bluesky-logout-btn" id="bsky-logout-btn">Logout</button>
+            </div>
+
+            <form id="bluesky-composer-form" class="bluesky-composer">
+              <textarea 
+                id="bsky-textarea" 
+                class="bluesky-textarea" 
+                placeholder="What's happening?!"
+                maxlength="300"
+              ></textarea>
+              <div class="bluesky-char-count">
+                <span id="bsky-char-count">0</span>/300
+              </div>
+              <div class="bluesky-image-preview" id="bsky-image-preview" style="display: none; margin-top: 0.5rem; padding: 0.75rem; background: #f0f7ff; border-radius: 8px;">
+                <img id="bsky-preview-img" style="max-width: 100%; max-height: 200px; border-radius: 8px; margin-bottom: 10px;">
+                <button type="button" id="bsky-remove-image-btn" style="background: #ff6b6b; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem;">✕ Remove</button>
+              </div>
+
+              <!-- Link Preview Editor (Pro Feature) -->
+              <div id="bsky-link-preview" style="display: none; margin-top: 0.5rem; padding: 0.75rem; background: #f5f5f5; border-radius: 8px; border: 1px solid #ddd;">
+                <div style="font-size: 0.75rem; font-weight: 600; color: #666; margin-bottom: 0.5rem; text-transform: uppercase;">Link Preview</div>
+                <div id="link-preview-display" style="margin-bottom: 0.75rem; padding: 0.75rem; background: white; border-radius: 6px; border: 1px solid #ddd;">
+                  <div id="link-preview-thumb" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem; display: none;"></div>
+                  <div id="link-preview-title" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem;"></div>
+                  <div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3;"></div>
+                </div>
+                <button type="button" id="link-preview-edit-btn" style="background: #667eea; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; width: 100%;">✎ Edit Preview (Pro)</button>
+              </div>
+
+              <!-- Link Preview Edit Modal (Pro Feature) -->
+              <div id="link-preview-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 5000; align-items: center; justify-content: center;" role="dialog">
+                <div style="background: white; border-radius: 12px; padding: 24px; max-width: 500px; width: 90%; box-shadow: 0 10px 40px rgba(0,0,0,0.2);">
+                  <h3 style="margin-top: 0; color: #333;">Edit Link Preview</h3>
+                  <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-weight: 600; color: #333 !important; margin-bottom: 6px; font-size: 0.9rem;">Title</label>
+                    <input type="text" id="link-preview-title-input" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; color: #333 !important; background: white;" placeholder="Enter title">
+                  </div>
+                  <div style="margin-bottom: 16px;">
+                    <label style="display: block; font-weight: 600; color: #333 !important; margin-bottom: 6px; font-size: 0.9rem;">Description</label>
+                    <textarea id="link-preview-desc-input" style="width: 100%; padding: 8px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 0.9rem; box-sizing: border-box; resize: vertical; min-height: 80px; color: #333 !important; background: white;"></textarea>
+                  </div>
+                  <div style="display: flex; gap: 10px;">
+                    <button type="button" id="link-preview-save-btn" style="flex: 1; background: #667eea; color: white; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;">Save</button>
+                    <button type="button" id="link-preview-cancel-btn" style="flex: 1; background: #e5e7eb; color: #333; border: none; padding: 10px; border-radius: 6px; cursor: pointer; font-weight: 600;">Cancel</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="bluesky-actions">
+                <button type="submit" class="bluesky-post-btn" id="bsky-post-btn">Post</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Published and Failed Posts Sections -->
+          <div id="post-history-section" style="margin-top: 2rem; border-top: 1px solid #e0e0e0; padding-top: 1rem;">
+            <!-- Scheduled posts -->
+            <div id="scheduled-posts-container"></div>
+            
+            <!-- Published posts -->
+            <div id="published-posts-container"></div>
+            
+            <!-- Failed posts -->
+            <div id="failed-posts-container"></div>
+          </div>
+        </div>
+
+        <!-- Calendar Tab -->
+        <div id="calendar-tab-content" style="display: none; overflow-y: auto; padding: 1rem;">
+          <div id="calendar-view"></div>
+        </div>
+
+        <!-- Analytics Tab (Pro) -->
+        <div id="analytics-tab-content" style="display: none; overflow-y: auto; padding: 1rem;">
+          <div id="analytics-view"></div>
+        </div>
+
+        <!-- Lists Tab (Pro) -->
+        <div id="lists-tab-content" style="display: none; overflow-y: auto; padding: 1rem;">
+          <div id="lists-view"></div>
+        </div>
+      </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pro Settings Modal -->
+  <div id="pro-modal">
+    <div class="pro-modal-content">
+      <div class="pro-modal-header">
+        <h1>🚀 Pro Features</h1>
+        <button class="pro-modal-close" id="pro-modal-close">&times;</button>
+      </div>
+      <div class="pro-modal-body" id="pro-modal-body"></div>
+    </div>
+  </div>
+
+  <script src="license.js"></script>
+  <script src="backup.js"></script>
+  <script src="workspace.js"></script>
+  <script src="init.js"></script>
+</body>
+</html>

@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "SkyPost",
+  "version": "1.0.0",
+  "description": "Post Composer and Scheduler for Bluesky. Custom post editing, analytics and scheduling of your Bluesky Posts",
+  "permissions": [
+    "storage",
+    "scripting",
+    "tabs",
+    "windows",
+    "alarms"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],
+  "content_security_policy": {
+    "script-src": ["'self'"],
+    "connect-src": ["*"]
+  },
+  "action": {
+    "default_title": "Open Notes Workspace"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["customize.html", "customize.js", "workspace.html", "workspace.js", "pro-settings.html", "init.js", "license.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

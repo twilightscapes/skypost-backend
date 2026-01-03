@@ -1,0 +1,195 @@
+// Initialize workspace and Bluesky after page load
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
+    window.licenseManager = new LicenseManager();
+    window.workspace = new NotesWorkspace();
+    window.bluesky = new BlueskyIntegration();
+    
+    // Setup Pro Settings modal
+    setupProModal();
+  } else {
+    console.error('[Init] Classes not defined yet');
+  }
+});
+
+// Fallback if DOM already loaded
+if (document.readyState !== 'loading') {
+  if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
+    window.licenseManager = new LicenseManager();
+    window.workspace = new NotesWorkspace();
+    window.bluesky = new BlueskyIntegration();
+    
+    // Setup Pro Settings modal
+    setupProModal();
+  }
+}
+
+function setupProModal() {
+  const proBtn = document.getElementById('pro-settings-btn');
+  const modal = document.getElementById('pro-modal');
+  const closeBtn = document.getElementById('pro-modal-close');
+  
+  if (!proBtn || !modal) return;
+  
+  // Open modal on button click
+  proBtn.addEventListener('click', () => {
+    renderProModal();
+    modal.classList.add('active');
+  });
+  
+  // Close modal on close button
+  closeBtn.addEventListener('click', () => {
+    modal.classList.remove('active');
+  });
+  
+  // Close modal on background click
+  modal.addEventListener('click', (e) => {
+    if (e.target === modal) {
+      modal.classList.remove('active');
+    }
+  });
+  
+  // Close on Escape key
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && modal.classList.contains('active')) {
+      modal.classList.remove('active');
+    }
+  });
+}
+
+function renderProModal() {
+  const body = document.getElementById('pro-modal-body');
+  const isPro = licenseManager.isProUser();
+  const features = licenseManager.getFeatureList();
+  
+  let html = `
+    <div style="margin-bottom: 24px;">
+      <div style="background: #f5f5f5; border-radius: 8px; padding: 16px; border-left: 4px solid #667eea; margin-bottom: 20px;">
+        <div style="display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; margin-bottom: 10px; ${isPro ? 'background: #d4edda; color: #155724;' : 'background: #f8d7da; color: #721c24;'}">
+          ${isPro ? '✓ PRO ACTIVE' : '✗ FREE PLAN'}
+        </div>
+        <div style="font-size: 14px; color: #666;">
+          ${isPro ? `Your Pro license expires in ${licenseManager.getRemainingDays()} days` : 'Upgrade to Pro to unlock advanced features'}
+        </div>
+      </div>
+    </div>
+  `;
+  
+  // Upgrade box
+  if (!isPro) {
+    html += `
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
+        <h2 style="margin: 0 0 10px 0;">Upgrade to Pro</h2>
+        <div style="font-size: 32px; font-weight: bold; margin: 10px 0;">$9.99/month</div>
+        <div style="font-size: 13px; margin: 15px 0; line-height: 1.6;">
+          ✓ Unlimited scheduled posts<br>
+          ✓ Post analytics & engagement tracking<br>
+          ✓ Best time to post recommendations<br>
+          ✓ Post templates & presets<br>
+          ✓ Priority support
+        </div>
+        <button id="pricing-page-btn" style="margin-top: 15px; width: 100%; padding: 12px 24px; background: white; color: #667eea; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+          Get Pro Access
+        </button>
+      </div>
+    `;
+  }
+  
+  // Features grid
+  html += `<div style="margin-bottom: 24px;"><div style="font-weight: 600; color: #333; margin-bottom: 12px; font-size: 16px;">Available Features</div>`;
+  html += `<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">`;
+  
+  features.free.forEach(f => {
+    html += `
+      <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="font-size: 16px; margin-bottom: 4px;">✓</div>
+        <div style="font-weight: 600; font-size: 13px; color: #333;">${f.name}</div>
+        ${f.limit ? `<div style="font-size: 11px; color: #999;">${f.limit}</div>` : ''}
+      </div>
+    `;
+  });
+  
+  features.pro.forEach(f => {
+    html += `
+      <div style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 12px; text-align: center; ${!isPro ? 'opacity: 0.6; background: #f9f9f9;' : ''}">
+        <div style="font-size: 16px; margin-bottom: 4px;">${!isPro ? '🔒' : '⭐'}</div>
+        <div style="font-weight: 600; font-size: 13px; color: #333;">${f.name}</div>
+      </div>
+    `;
+  });
+  
+  html += `</div></div>`;
+  
+  // License activation
+  html += `
+    <div style="border-top: 1px solid #e5e7eb; padding-top: 24px;">
+      <div style="font-weight: 600; color: #333; margin-bottom: 12px; font-size: 14px;">Have a License Key?</div>
+      <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+        <input type="text" id="license-key-input" placeholder="Paste your license key here" style="flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 6px; font-size: 13px; font-family: monospace; color: #333; background: white;">
+        <button id="activate-license-btn" style="padding: 10px 24px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;">Activate</button>
+      </div>
+      <div id="license-message" style="min-height: 24px;"></div>
+    </div>
+  `;
+  
+  body.innerHTML = html;
+  
+  // Attach event listeners after HTML is set
+  const activateBtn = document.getElementById('activate-license-btn');
+  if (activateBtn) {
+    activateBtn.addEventListener('click', activateLicense);
+  }
+  
+  const pricingBtn = document.getElementById('pricing-page-btn');
+  if (pricingBtn) {
+    pricingBtn.addEventListener('click', goToPricingPage);
+  }
+}
+
+async function activateLicense() {
+  const input = document.getElementById('license-key-input');
+  const key = input.value.trim();
+  const msgEl = document.getElementById('license-message');
+  
+  if (!key) {
+    showLicenseMessage('Please enter a license key', 'error');
+    return;
+  }
+  
+  const result = await licenseManager.activateLicense(key);
+  
+  if (result.success) {
+    showLicenseMessage(result.message, 'success');
+    input.value = '';
+    setTimeout(() => {
+      renderProModal();
+    }, 1000);
+  } else {
+    showLicenseMessage(result.message, 'error');
+  }
+}
+
+function showLicenseMessage(text, type) {
+  const msgEl = document.getElementById('license-message');
+  if (!msgEl) return;
+  
+  msgEl.innerHTML = `<div style="padding: 8px 12px; border-radius: 6px; font-size: 12px; ${
+    type === 'success' ? 'background: #d4edda; color: #155724; border: 1px solid #c3e6cb;' :
+    type === 'error' ? 'background: #f8d7da; color: #721c24; border: 1px solid #f5c6cb;' :
+    'background: #d1ecf1; color: #0c5460; border: 1px solid #bee5eb;'
+  }">${text}</div>`;
+  
+  if (type === 'success') {
+    setTimeout(() => {
+      msgEl.innerHTML = '';
+    }, 3000);
+  }
+}
+
+function goToPricingPage() {
+  chrome.tabs.create({
+    url: 'https://your-pricing-page.com/bluesky-notes-pro'
+  });
+}
+
