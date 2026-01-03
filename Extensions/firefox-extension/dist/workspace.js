@@ -6,6 +6,7 @@ class NotesWorkspace {
     this.allNotes = [];
     this.colors = ['#ffffff', '#fef08a', '#fca5a5', '#bfdbfe', '#bbf7d0', '#e9d5ff', '#fed7aa', '#f3f3f3'];
     this.currentFilter = 'all'; // Track current filter
+    this.currentSearchTerm = ''; // Track current search term
     // Don't auto-init - wait for db to be ready
   }
 
@@ -160,6 +161,7 @@ class NotesWorkspace {
       
       const renderCalendarMonth = () => {
         const filteredNotes = getFilteredNotes();
+        console.log('[Calendar] Total scheduled notes:', self.allNotes.filter(n => n.status === 'scheduled').length, '| Filtered notes for calendar:', filteredNotes.length);
         
         if (filteredNotes.length === 0) {
           calendarView.innerHTML = '<div style="text-align: center; color: #6b7280; padding: 2rem;">No posts to display</div>';
@@ -172,6 +174,7 @@ class NotesWorkspace {
           const dateStr = date.toISOString().split('T')[0];
           if (!notesByDate[dateStr]) notesByDate[dateStr] = [];
           notesByDate[dateStr].push(note);
+          console.log('[Calendar] Post on', dateStr, ':', note.title);
         });
         
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -897,6 +900,27 @@ class NotesWorkspace {
       });
     });
 
+    // Add search functionality
+    const searchInput = document.getElementById('notes-search');
+    const clearAllButton = document.getElementById('clear-all');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => {
+        this.currentSearchTerm = e.target.value.toLowerCase();
+        this.renderNotesList();
+      });
+    }
+    
+    // Clear all button handler
+    if (clearAllButton) {
+      clearAllButton.addEventListener('click', () => {
+        searchInput.value = '';
+        this.currentSearchTerm = '';
+        this.currentFilter = 'all';
+        this.updateFilterButtons();
+        this.renderNotesList();
+      });
+    }
+
     // Update filter button styles
     this.updateFilterButtons();
 
@@ -914,9 +938,6 @@ class NotesWorkspace {
         case 'text-only':
           filteredNotes = this.allNotes.filter(n => !n.content.includes('<img'));
           break;
-        case 'empty':
-          filteredNotes = this.allNotes.filter(n => !n.content || n.content.trim() === '');
-          break;
         case 'scheduled':
           filteredNotes = this.allNotes.filter(n => n.status === 'scheduled');
           break;
@@ -928,6 +949,15 @@ class NotesWorkspace {
           filteredNotes = this.allNotes;
           break;
       }
+    }
+
+    // Apply search filter
+    if (this.currentSearchTerm) {
+      filteredNotes = filteredNotes.filter(n => {
+        const titleMatch = (n.title || '').toLowerCase().includes(this.currentSearchTerm);
+        const contentMatch = (n.content || '').toLowerCase().includes(this.currentSearchTerm);
+        return titleMatch || contentMatch;
+      });
     }
 
     // Sort by date (newest first)
@@ -962,10 +992,12 @@ class NotesWorkspace {
             let timeInfo = '';
             
             if (note.status === 'scheduled' && note.scheduledFor) {
+              const scheduledDate = new Date(note.scheduledFor);
+              const dateStr = scheduledDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+              const timeStr = scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
               const timeLeft = note.scheduledFor - Date.now();
               if (timeLeft > 0) {
-                timeInfo = this.formatTimeUntil(timeLeft);
-                statusBadge = `<span class="status-badge scheduled">📅 ${timeInfo}</span>`;
+                statusBadge = `<span class="status-badge scheduled">${dateStr} at ${timeStr}</span>`;
               } else {
                 statusBadge = `<span class="status-badge expired">⏰ Posting</span>`;
               }
@@ -1085,22 +1117,28 @@ class NotesWorkspace {
 
     // Render scheduled posts LAST - clickable to select from left
     if (scheduledNotes && scheduledNotes.length > 0) {
+      console.log('[renderPostSummary] Rendering', scheduledNotes.length, 'scheduled posts');
       scheduledContainer.innerHTML = `
         <div style="margin-bottom: 1.5rem;">
-          <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: #0284c7;">📅 Scheduled (${scheduledNotes.length})</h4>
+          <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: #0284c7;">Scheduled (${scheduledNotes.length})</h4>
           <div style="display: flex; flex-direction: column; gap: 0.5rem;">
             ${scheduledNotes.map(note => {
+              const scheduledDate = new Date(note.scheduledFor);
+              const dateStr = scheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+              const timeStr = scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
               const timeLeft = note.scheduledFor - Date.now();
-              let timeInfo = '';
+              let countdownStr = '';
               if (timeLeft > 0) {
-                timeInfo = this.formatTimeUntil(timeLeft);
+                countdownStr = this.formatTimeUntil(timeLeft);
               } else {
-                timeInfo = 'Posting soon...';
+                countdownStr = 'Posting soon';
               }
+              console.log('[renderPostSummary] Post:', note.title, 'scheduled:', note.scheduledFor, 'dateStr:', dateStr, 'timeStr:', timeStr);
               return `
                 <div class="scheduled-post-item" data-note-id="${note.id}" style="padding: 0.75rem; background: #dbeafe; border-left: 3px solid #0284c7; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.background='#bfdbfe';" onmouseout="this.style.background='#dbeafe';">
                   <div style="font-weight: 500; color: #1f2937; margin-bottom: 0.25rem;">${note.title}</div>
-                  <div style="color: #0284c7; font-size: 0.8rem;">Posts in ${timeInfo}</div>
+                  <div style="color: #0284c7; font-size: 0.75rem; margin-bottom: 0.2rem;">${dateStr} at ${timeStr}</div>
+                  <div style="color: #6b7280; font-size: 0.7rem;">${countdownStr}</div>
                 </div>
               `;
             }).join('')}
@@ -1738,6 +1776,12 @@ class NotesDBStorage {
   }
 
   async saveNote(note) {
+    // Don't save empty draft posts
+    if (note.status === 'draft' && (!note.content || note.content.trim() === '')) {
+      console.log('[DBStorage] Skipping save - empty draft post');
+      return Promise.resolve();
+    }
+    
     if (!this.db) {
       await this.init();
     }
@@ -1777,8 +1821,33 @@ class NotesDBStorage {
       
       request.onsuccess = () => {
         const notes = request.result || [];
-        console.log('[DBStorage] ✓ getAllNotes returned', notes.length, 'notes');
-        resolve(notes);
+        // Filter out blank/corrupt notes: exclude drafts with no content
+        const blankIds = [];
+        const validNotes = notes.filter(n => {
+          if (!n) return false;
+          // Collect blank draft posts to delete
+          if (n.status === 'draft' && (!n.content || n.content.trim() === '')) {
+            blankIds.push(n.id);
+            return false;
+          }
+          return true;
+        });
+        
+        // Delete blank drafts from database
+        if (blankIds.length > 0) {
+          console.warn('[DBStorage] ⚠ Deleting', blankIds.length, 'blank/corrupt notes');
+          const deleteTransaction = this.db.transaction([this.storeName], 'readwrite');
+          const deleteStore = deleteTransaction.objectStore(this.storeName);
+          blankIds.forEach(id => {
+            deleteStore.delete(id);
+          });
+        }
+        
+        if (validNotes.length < notes.length) {
+          console.warn('[DBStorage] ⚠ Filtered out', notes.length - validNotes.length, 'blank/corrupt notes');
+        }
+        console.log('[DBStorage] ✓ getAllNotes returned', validNotes.length, 'valid notes (filtered from', notes.length, 'total)');
+        resolve(validNotes);
       };
     });
   }

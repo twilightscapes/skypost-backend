@@ -273,6 +273,8 @@ window.renderProModal = async function() {
           // Reload workspace's Pro tab state
           if (window.workspace) {
             window.workspace.isPro = true;
+            // Show storage dashboard now that user is Pro
+            window.workspace.setupProStorageDashboard();
           }
           
           // Reload modal to show pro features
