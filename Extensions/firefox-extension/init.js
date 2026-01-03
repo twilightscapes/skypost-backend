@@ -1,24 +1,18 @@
 // Initialize workspace and Bluesky after page load
 
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[Init] DOMContentLoaded fired');
   if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
-    console.log('[Init] Classes defined, creating instances...');
     window.licenseManager = new LicenseManager();
     await window.licenseManager.loadLicense();
-    console.log('[Init] License loaded');
     
     // Create workspace and initialize it (db, notes, ui)
     window.workspace = new NotesWorkspace();
     await window.workspace.init();
-    console.log('[Init] Workspace created and initialized');
     
     window.bluesky = new BlueskyIntegration();
-    console.log('[Init] Bluesky created');
     
     // Setup Pro Settings modal
     setupProModal();
-    console.log('[Init] Setup complete');
   } else {
     console.error('[Init] Classes not defined yet - NotesWorkspace:', typeof NotesWorkspace, 'BlueskyIntegration:', typeof BlueskyIntegration);
   }
@@ -26,21 +20,15 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // Fallback if DOM already loaded
 if (document.readyState !== 'loading') {
-  console.log('[Init] DOM already loaded, using fallback');
   if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
-    console.log('[Init] Classes defined in fallback, creating instances...');
     window.licenseManager = new LicenseManager();
     window.licenseManager.loadLicense().then(async () => {
-      console.log('[Init] License loaded in fallback');
       window.workspace = new NotesWorkspace();
       await window.workspace.init();
-      console.log('[Init] Workspace created and initialized in fallback');
       window.bluesky = new BlueskyIntegration();
-      console.log('[Init] Bluesky created in fallback');
       
       // Setup Pro Settings modal
       setupProModal();
-      console.log('[Init] Setup complete in fallback');
     });
   } else {
     console.error('[Init] Classes not defined in fallback');
@@ -284,6 +272,8 @@ window.renderProModal = async function() {
           // Reload workspace's Pro tab state
           if (window.workspace) {
             window.workspace.isPro = true;
+            // Show storage dashboard now that user is Pro
+            window.workspace.setupProStorageDashboard();
           }
           
           // Reload modal to show pro features

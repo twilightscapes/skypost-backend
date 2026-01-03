@@ -1,20 +1,14 @@
 // Initialize workspace and Bluesky after page load
 
 document.addEventListener('DOMContentLoaded', async () => {
-  console.log('[Init] DOMContentLoaded fired');
   if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
-    console.log('[Init] Classes defined, creating instances...');
     window.licenseManager = new LicenseManager();
     await window.licenseManager.loadLicense();
-    console.log('[Init] License loaded');
     window.workspace = new NotesWorkspace();
-    console.log('[Init] Workspace created');
     window.bluesky = new BlueskyIntegration();
-    console.log('[Init] Bluesky created');
     
     // Setup Pro Settings modal
     setupProModal();
-    console.log('[Init] Setup complete');
   } else {
     console.error('[Init] Classes not defined yet - NotesWorkspace:', typeof NotesWorkspace, 'BlueskyIntegration:', typeof BlueskyIntegration);
   }
@@ -279,6 +273,8 @@ window.renderProModal = async function() {
           // Reload workspace's Pro tab state
           if (window.workspace) {
             window.workspace.isPro = true;
+            // Show storage dashboard now that user is Pro
+            window.workspace.setupProStorageDashboard();
           }
           
           // Reload modal to show pro features

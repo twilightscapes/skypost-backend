@@ -11,20 +11,15 @@ class NotesWorkspace {
 
   async init() {
     try {
-      console.log('[Workspace] Initializing...');
-      
       // Initialize IndexedDB first
       await this.db.init();
-      console.log('[Workspace] Database initialized');
       
       // Load notes from storage
       this.allNotes = await this.db.getAllNotes();
-      console.log('[Workspace] Loaded notes:', this.allNotes.length);
 
       // Set up UI
       this.setupEventListeners();
       await this.renderNotesList();
-      console.log('[Workspace] UI rendered');
 
       // Select first note if exists
       if (this.allNotes.length > 0) {
@@ -85,6 +80,9 @@ class NotesWorkspace {
     document.getElementById('clear-all-btn').addEventListener('click', () => {
       this.clearAllNotes();
     });
+
+    // Pro storage dashboard
+    this.setupProStorageDashboard();
 
     // Toolbar buttons
     document.getElementById('btn-color').addEventListener('click', (e) => {
@@ -759,6 +757,84 @@ class NotesWorkspace {
     document.getElementById('editor-content').innerHTML = '';
     this.updatePlaceholder();
     await this.renderNotesList();
+  }
+
+  setupProStorageDashboard() {
+    const proDashboard = document.getElementById('pro-storage-dashboard');
+    const proRequestBtn = document.getElementById('pro-request-storage-btn');
+    
+    if (!proDashboard || !proRequestBtn) return;
+    
+    // Check if Pro user
+    const isProUser = typeof window.licenseManager !== 'undefined' && window.licenseManager.isProUser();
+    
+    if (isProUser) {
+      proDashboard.hidden = false;
+      proRequestBtn.addEventListener('click', () => {
+        this.requestPersistentStorage();
+      });
+      // Update storage display periodically
+      this.updateProStorageDashboard();
+      setInterval(() => this.updateProStorageDashboard(), 2000);
+    } else {
+      // If not Pro yet, check again after a short delay (in case license is still loading)
+      setTimeout(() => {
+        if (typeof window.licenseManager !== 'undefined' && window.licenseManager.isProUser()) {
+          proDashboard.hidden = false;
+          proRequestBtn.addEventListener('click', () => {
+            this.requestPersistentStorage();
+          });
+          this.updateProStorageDashboard();
+          setInterval(() => this.updateProStorageDashboard(), 2000);
+        }
+      }, 100);
+    }
+  }
+
+  requestPersistentStorage() {
+    if (!navigator.storage || !navigator.storage.persist) {
+      console.warn('[Workspace] Persistent storage not supported');
+      return;
+    }
+
+    navigator.storage.persist().then((persistent) => {
+      if (persistent) {
+        this.updateProStorageDashboard();
+      }
+    }).catch((error) => {
+      console.error('[Workspace] Persistent storage error:', error);
+    });
+  }
+
+  async updateProStorageDashboard() {
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const estimate = await navigator.storage.estimate();
+        const used = estimate.usage || 0;
+        const quota = estimate.quota || 0;
+        const percent = quota > 0 ? (used / quota) * 100 : 0;
+
+        // Update bar
+        const bar = document.getElementById('pro-storage-bar');
+        if (bar) bar.style.width = percent + '%';
+
+        // Format bytes
+        const formatBytes = (bytes) => {
+          if (bytes === 0) return '0 B';
+          const k = 1024;
+          const sizes = ['B', 'KB', 'MB', 'GB'];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        };
+
+        const stats = document.getElementById('pro-storage-stats');
+        if (stats) {
+          stats.textContent = `${formatBytes(used)} of ${formatBytes(quota)} (${Math.round(percent)}%)`;
+        }
+      }
+    } catch (error) {
+      console.warn('[Workspace] Storage estimate error:', error);
+    }
   }
 
   async renderNotesList() {
@@ -1638,6 +1714,7 @@ class NotesDBStorage {
 
   async init() {
     console.log('[DBStorage] Initializing IndexedDB...');
+    
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(this.dbName, 1);
       
@@ -1648,24 +1725,19 @@ class NotesDBStorage {
       
       request.onsuccess = () => {
         this.db = request.result;
-        console.log('[DBStorage] ✓ IndexedDB initialized (50MB available)');
         resolve();
       };
       
       request.onupgradeneeded = (event) => {
-        console.log('[DBStorage] Creating object store...');
         const db = event.target.result;
         if (!db.objectStoreNames.contains(this.storeName)) {
           db.createObjectStore(this.storeName, { keyPath: 'id' });
-          console.log('[DBStorage] ✓ Object store created');
         }
       };
     });
   }
 
   async saveNote(note) {
-    console.log('[DBStorage] saveNote() to IndexedDB - noteId:', note.id);
-    
     if (!this.db) {
       await this.init();
     }
@@ -1681,7 +1753,6 @@ class NotesDBStorage {
       };
       
       request.onsuccess = () => {
-        console.log('[DBStorage] ✓ saveNote successful for noteId:', note.id);
         resolve();
       };
     });
@@ -1710,6 +1781,21 @@ class NotesDBStorage {
         resolve(notes);
       };
     });
+  }
+
+
+  requestPersistentStorage() {
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then((persistent) => {
+        if (persistent) {
+          console.log('[DBStorage] ✓ Persistent storage granted for Pro user');
+        } else {
+          console.log('[DBStorage] Persistent storage request denied by user');
+        }
+      }).catch((error) => {
+        console.warn('[DBStorage] Persistent storage error:', error);
+      });
+    }
   }
 
   async deleteNote(id) {

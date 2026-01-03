@@ -35,6 +35,8 @@ cp backup.js "$OUTPUT_DIR/"
 cp init.js "$OUTPUT_DIR/"
 cp license.js "$OUTPUT_DIR/"
 cp pro-settings.html "$OUTPUT_DIR/"
+cp popup.html "$OUTPUT_DIR/"
+cp popup.js "$OUTPUT_DIR/"
 
 echo -e "${GREEN}✅ Files copied to $OUTPUT_DIR/${NC}\n"
 

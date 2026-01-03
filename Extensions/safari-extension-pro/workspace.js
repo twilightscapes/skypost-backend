@@ -83,6 +83,9 @@ class NotesWorkspace {
       this.clearAllNotes();
     });
 
+    // Pro storage dashboard
+    this.setupProStorageDashboard();
+
     // Toolbar buttons
     document.getElementById('btn-color').addEventListener('click', (e) => {
       e.preventDefault();
@@ -751,6 +754,84 @@ class NotesWorkspace {
     document.getElementById('editor-content').innerHTML = '';
     this.updatePlaceholder();
     await this.renderNotesList();
+  }
+
+  setupProStorageDashboard() {
+    const proDashboard = document.getElementById('pro-storage-dashboard');
+    const proRequestBtn = document.getElementById('pro-request-storage-btn');
+    
+    if (!proDashboard || !proRequestBtn) return;
+    
+    // Check if Pro user
+    const isProUser = typeof window.licenseManager !== 'undefined' && window.licenseManager.isProUser();
+    
+    if (isProUser) {
+      proDashboard.hidden = false;
+      proRequestBtn.addEventListener('click', () => {
+        this.requestPersistentStorage();
+      });
+      // Update storage display periodically
+      this.updateProStorageDashboard();
+      setInterval(() => this.updateProStorageDashboard(), 2000);
+    } else {
+      // If not Pro yet, check again after a short delay (in case license is still loading)
+      setTimeout(() => {
+        if (typeof window.licenseManager !== 'undefined' && window.licenseManager.isProUser()) {
+          proDashboard.hidden = false;
+          proRequestBtn.addEventListener('click', () => {
+            this.requestPersistentStorage();
+          });
+          this.updateProStorageDashboard();
+          setInterval(() => this.updateProStorageDashboard(), 2000);
+        }
+      }, 100);
+    }
+  }
+
+  requestPersistentStorage() {
+    if (!navigator.storage || !navigator.storage.persist) {
+      console.warn('[Workspace] Persistent storage not supported');
+      return;
+    }
+
+    navigator.storage.persist().then((persistent) => {
+      if (persistent) {
+        this.updateProStorageDashboard();
+      }
+    }).catch((error) => {
+      console.error('[Workspace] Persistent storage error:', error);
+    });
+  }
+
+  async updateProStorageDashboard() {
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const estimate = await navigator.storage.estimate();
+        const used = estimate.usage || 0;
+        const quota = estimate.quota || 0;
+        const percent = quota > 0 ? (used / quota) * 100 : 0;
+
+        // Update bar
+        const bar = document.getElementById('pro-storage-bar');
+        if (bar) bar.style.width = percent + '%';
+
+        // Format bytes
+        const formatBytes = (bytes) => {
+          if (bytes === 0) return '0 B';
+          const k = 1024;
+          const sizes = ['B', 'KB', 'MB', 'GB'];
+          const i = Math.floor(Math.log(bytes) / Math.log(k));
+          return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+        };
+
+        const stats = document.getElementById('pro-storage-stats');
+        if (stats) {
+          stats.textContent = `${formatBytes(used)} of ${formatBytes(quota)} (${Math.round(percent)}%)`;
+        }
+      }
+    } catch (error) {
+      console.warn('[Workspace] Storage estimate error:', error);
+    }
   }
 
   async handleBackup() {
@@ -1807,154 +1888,158 @@ class NotesWorkspace {
 class NotesDBStorage {
   constructor() {
     this.storageKey = 'floatingNotes';
+    this.dbName = 'SkyPostDB';
+    this.storeName = 'notes';
+    this.db = null;
+    this.migrationDone = false;
+    console.log('[DBStorage] Constructor - using IndexedDB with migration');
   }
 
   async init() {
-    return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, 1);
+
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ Failed to open IndexedDB:', request.error);
+        reject(request.error);
+      };
+
+      request.onsuccess = async () => {
+        this.db = request.result;
+        console.log('[DBStorage] ✓ IndexedDB initialized (50MB available)');
+        
+        // Migrate data from chrome.storage.local if not already done
+        await this.migrateFromChromeStorage();
+        resolve();
+      };
+
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName, { keyPath: 'id' });
+          console.log('[DBStorage] ✓ Created notes object store');
+        }
+      };
+    });
   }
 
-  async migrateOldNotes() {
-    // Removed - not needed with direct storage approach
+  requestPersistentStorage() {
+    if (navigator.storage && navigator.storage.persist) {
+      navigator.storage.persist().then((persistent) => {
+        if (persistent) {
+          console.log('[DBStorage] ✓ Persistent storage granted for Pro user');
+        } else {
+          console.log('[DBStorage] Persistent storage request denied by user');
+        }
+      }).catch((error) => {
+        console.warn('[DBStorage] Persistent storage error:', error);
+      });
+    }
+  }
+
+  async migrateFromChromeStorage() {
+    if (this.migrationDone) return;
+    
+    console.log('[DBStorage] Checking for migration from chrome.storage.local...');
+    
+    return new Promise((resolve) => {
+      if (!chrome.storage || !chrome.storage.local) {
+        console.log('[DBStorage] chrome.storage not available, skipping migration');
+        this.migrationDone = true;
+        resolve();
+        return;
+      }
+
+      chrome.storage.local.get([this.storageKey], async (result) => {
+        if (chrome.runtime.lastError) {
+          console.warn('[DBStorage] chrome.storage error during migration');
+          this.migrationDone = true;
+          resolve();
+          return;
+        }
+
+        const oldNotes = result[this.storageKey] || [];
+        
+        if (oldNotes.length === 0) {
+          console.log('[DBStorage] No old notes to migrate');
+          this.migrationDone = true;
+          resolve();
+          return;
+        }
+
+        console.log('[DBStorage] Migrating', oldNotes.length, 'notes from chrome.storage.local to IndexedDB...');
+        
+        // Migrate each note to IndexedDB
+        for (const note of oldNotes) {
+          await this.saveNote(note);
+        }
+
+        console.log('[DBStorage] ✓ Migration complete! All notes moved to IndexedDB');
+        this.migrationDone = true;
+        resolve();
+      });
+    });
   }
 
   async saveNote(note) {
-    console.log('[DBStorage] Saving note:', note.id, note.title);
+    if (!this.db) await this.init();
     
     return new Promise((resolve, reject) => {
-      // Try chrome.storage first
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get([this.storageKey], (result) => {
-          if (chrome.runtime.lastError) {
-            console.warn('[DBStorage] chrome.storage error, falling back to localStorage');
-            this.saveToLocalStorage(note);
-            resolve();
-            return;
-          }
+      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.put(note);
 
-          const notes = result[this.storageKey] || [];
-          const index = notes.findIndex(n => n.id === note.id);
-          
-          if (index >= 0) {
-            notes[index] = note;
-          } else {
-            notes.push(note);
-          }
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ Failed to save note:', request.error);
+        reject(request.error);
+      };
 
-          chrome.storage.local.set({ [this.storageKey]: notes }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn('[DBStorage] chrome.storage.set failed, falling back to localStorage');
-              this.saveToLocalStorage(note);
-            } else {
-              console.log('[DBStorage] ✓ Saved to chrome.storage, total notes:', notes.length);
-            }
-            resolve();
-          });
-        });
-      } else {
-        console.warn('[DBStorage] chrome.storage not available, using localStorage');
-        this.saveToLocalStorage(note);
+      request.onsuccess = () => {
+        console.log('[DBStorage] ✓ Saved note:', note.id, note.title);
         resolve();
-      }
+      };
     });
-  }
-
-  saveToLocalStorage(note) {
-    console.log('[LocalStorage] Saving note to localStorage:', note.id);
-    try {
-      const notes = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
-      console.log('[LocalStorage] Retrieved', notes.length, 'existing notes');
-      const index = notes.findIndex(n => n.id === note.id);
-      if (index >= 0) {
-        notes[index] = note;
-        console.log('[LocalStorage] Updated note at index', index);
-      } else {
-        notes.push(note);
-        console.log('[LocalStorage] Added new note, total now:', notes.length);
-      }
-      localStorage.setItem(this.storageKey, JSON.stringify(notes));
-      console.log('[LocalStorage] ✓ Successfully saved to localStorage');
-    } catch (error) {
-      console.error('[LocalStorage] ERROR:', error.message);
-    }
   }
 
   async getAllNotes() {
-    console.log('[DBStorage] Loading all notes...');
-    
-    return new Promise((resolve) => {
-      // Try chrome.storage first
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get([this.storageKey], (result) => {
-          if (chrome.runtime.lastError) {
-            console.warn('[DBStorage] chrome.storage error, falling back to localStorage');
-            const notes = this.getFromLocalStorage();
-            resolve(notes);
-            return;
-          }
+    if (!this.db) await this.init();
 
-          const notes = result[this.storageKey] || [];
-          console.log('[DBStorage] ✓ Loaded', notes.length, 'notes from chrome.storage');
-          resolve(notes);
-        });
-      } else {
-        console.warn('[DBStorage] chrome.storage not available, using localStorage');
-        const notes = this.getFromLocalStorage();
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAll();
+
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ Failed to get all notes:', request.error);
+        reject(request.error);
+      };
+
+      request.onsuccess = () => {
+        const notes = request.result;
+        console.log('[DBStorage] ✓ getAllNotes returned', notes.length, 'notes');
         resolve(notes);
-      }
+      };
     });
-  }
-
-  getFromLocalStorage() {
-    try {
-      const notes = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
-      console.log('[DBStorage] Retrieved', notes.length, 'notes from localStorage');
-      return notes;
-    } catch (error) {
-      console.error('[DBStorage] localStorage error:', error);
-      return [];
-    }
   }
 
   async deleteNote(id) {
-    return new Promise((resolve) => {
-      // Try chrome.storage first
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get([this.storageKey], (result) => {
-          if (chrome.runtime.lastError) {
-            console.warn('[Storage] chrome.storage error, falling back to localStorage');
-            this.deleteFromLocalStorage(id);
-            resolve();
-            return;
-          }
+    if (!this.db) await this.init();
 
-          const notes = result[this.storageKey] || [];
-          const filtered = notes.filter(n => n.id !== id);
-          
-          chrome.storage.local.set({ [this.storageKey]: filtered }, () => {
-            if (chrome.runtime.lastError) {
-              console.warn('[Storage] chrome.storage.set failed, falling back to localStorage');
-              this.deleteFromLocalStorage(id);
-            } else {
-            }
-            resolve();
-          });
-        });
-      } else {
-        console.warn('[Storage] chrome.storage not available, using localStorage');
-        this.deleteFromLocalStorage(id);
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.delete(id);
+
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ Failed to delete note:', request.error);
+        reject(request.error);
+      };
+
+      request.onsuccess = () => {
+        console.log('[DBStorage] ✓ Deleted note:', id);
         resolve();
-      }
+      };
     });
-  }
-
-  deleteFromLocalStorage(id) {
-    try {
-      const notes = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
-      const filtered = notes.filter(n => n.id !== id);
-      localStorage.setItem(this.storageKey, JSON.stringify(filtered));
-    } catch (error) {
-      console.error('[Storage] localStorage error:', error);
-    }
   }
 }
 
