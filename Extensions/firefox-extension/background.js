@@ -5,152 +5,8 @@ console.log('[Background] Script loaded');
 const STORAGE_KEY = 'floatingNotes';
 const SCHEDULE_CHECK_ALARM = 'checkScheduledPosts';
 
-// Storage wrapper using IndexedDB in background script for true persistence
-class BackgroundStorageDB {
-  constructor() {
-    this.db = null;
-    this.ready = this.init();
-  }
-  
-  async init() {
-    return new Promise((resolve) => {
-      try {
-        console.log('[BackgroundDB] Opening IndexedDB (background context)...');
-        const request = indexedDB.open('SkyPostDB', 1);
-        
-        request.onerror = () => {
-          console.error('[BackgroundDB] ✗ Failed to open DB:', request.error);
-          resolve(false);
-        };
-        
-        request.onsuccess = () => {
-          this.db = request.result;
-          console.log('[BackgroundDB] ✓ IndexedDB initialized in background');
-          resolve(true);
-        };
-        
-        request.onupgradeneeded = (e) => {
-          console.log('[BackgroundDB] Creating object store...');
-          const db = e.target.result;
-          if (!db.objectStoreNames.contains('notes')) {
-            db.createObjectStore('notes');
-          }
-        };
-      } catch (error) {
-        console.error('[BackgroundDB] Init error:', error);
-        resolve(false);
-      }
-    });
-  }
-  
-  async getAllNotes() {
-    try {
-      await this.ready;
-      if (!this.db) {
-        console.warn('[BackgroundDB] DB not ready');
-        return [];
-      }
-      
-      return new Promise((resolve) => {
-        const tx = this.db.transaction('notes', 'readonly');
-        const store = tx.objectStore('notes');
-        const request = store.get(STORAGE_KEY);
-        
-        request.onsuccess = () => {
-          const notes = request.result || [];
-          console.log('[BackgroundDB] ✓ Retrieved', notes.length, 'notes from IndexedDB');
-          resolve(notes);
-        };
-        
-        request.onerror = () => {
-          console.error('[BackgroundDB] ✗ Get error:', request.error);
-          resolve([]);
-        };
-      });
-    } catch (error) {
-      console.error('[BackgroundDB] getAllNotes error:', error);
-      return [];
-    }
-  }
-  
-  async saveNote(notes) {
-    try {
-      await this.ready;
-      if (!this.db) {
-        console.warn('[BackgroundDB] DB not ready, cannot save');
-        return;
-      }
-      
-      return new Promise((resolve) => {
-        const tx = this.db.transaction('notes', 'readwrite');
-        const store = tx.objectStore('notes');
-        const request = store.put(notes, STORAGE_KEY);
-        
-        request.onsuccess = () => {
-          console.log('[BackgroundDB] ✓ Saved', notes.length, 'notes to IndexedDB');
-          resolve();
-        };
-        
-        request.onerror = () => {
-          console.error('[BackgroundDB] ✗ Save error:', request.error);
-          resolve();
-        };
-      });
-    } catch (error) {
-      console.error('[BackgroundDB] saveNote error:', error);
-    }
-  }
-}
-
-// Initialize storage at script load
-let bgStorage = null;
-try {
-  bgStorage = new BackgroundStorageDB();
-  console.log('[Background] Storage initialized');
-} catch (error) {
-  console.error('[Background] Failed to initialize storage:', error);
-}
-
-// Migration: Move old notes from chrome.storage.local to IndexedDB if they exist
-async function migrateOldNotes() {
-  try {
-    if (!bgStorage) {
-      console.warn('[Background] Storage not available for migration');
-      return;
-    }
-    await bgStorage.ready;
-    const existingNotes = await bgStorage.getAllNotes();
-    
-    if (existingNotes && existingNotes.length > 0) {
-      console.log('[Background] Migration: Notes already in IndexedDB, skipping');
-      return;
-    }
-    
-    // Try to get old notes from chrome.storage.local
-    chrome.storage.local.get([STORAGE_KEY], async (result) => {
-      const oldNotes = result[STORAGE_KEY];
-      
-      if (oldNotes && oldNotes.length > 0) {
-        console.log('[Background] Migration: Found', oldNotes.length, 'old notes in chrome.storage, migrating to IndexedDB...');
-        await bgStorage.saveNote(oldNotes);
-        console.log('[Background] Migration: ✓ Migrated', oldNotes.length, 'notes to IndexedDB');
-      } else {
-        console.log('[Background] Migration: No old notes found');
-      }
-    });
-  } catch (error) {
-    console.warn('[Background] Migration error:', error);
-  }
-}
-
-// Run migration on startup with error handling
-setTimeout(() => {
-  try {
-    migrateOldNotes();
-  } catch (error) {
-    console.error('[Background] Migration startup error:', error);
-  }
-}, 100);
+// Using chrome.storage.sync for persistent data synced to Firefox account
+console.log('[Background] Using chrome.storage.sync for persistent data');
 
 // Global error handlers
 try {
@@ -200,47 +56,67 @@ try {
       
       // Storage proxy handlers - for persistent storage from popup
       if (msg && msg.action === 'getAllNotes') {
-        console.log('[Background] 🔵 getAllNotes request received');
-        bgStorage.getAllNotes().then((notes) => {
-          console.log('[Background] 🟢 getAllNotes returning', notes.length, 'notes from IndexedDB');
+        console.log('[Background] getAllNotes request');
+        chrome.storage.sync.get([STORAGE_KEY], (result) => {
+          if (chrome.runtime.lastError) {
+            console.error('[Background] ✗ Storage error:', chrome.runtime.lastError);
+            sendResponse({ notes: [] });
+            return;
+          }
+          const notes = result[STORAGE_KEY] || [];
+          console.log('[Background] ✓ Returning', notes.length, 'notes from chrome.storage.sync');
           sendResponse({ notes: notes });
         });
         return true; // Will respond asynchronously
       }
       
       if (msg && msg.action === 'saveNote') {
-        console.log('[Background] 🔵 saveNote request received for:', msg.note?.id, 'note:', msg.note);
-        bgStorage.getAllNotes().then((notes) => {
-          console.log('[Background] Current notes in IndexedDB:', notes.length);
+        console.log('[Background] saveNote request for:', msg.note?.id);
+        chrome.storage.sync.get([STORAGE_KEY], (result) => {
+          if (chrome.runtime.lastError) {
+            console.error('[Background] ✗ Storage error:', chrome.runtime.lastError);
+            sendResponse({ success: false });
+            return;
+          }
+          const notes = result[STORAGE_KEY] || [];
           const index = notes.findIndex(n => n.id === msg.note.id);
           if (index >= 0) {
             notes[index] = msg.note;
             console.log('[Background] Updated note at index', index);
           } else {
             notes.push(msg.note);
-            console.log('[Background] Added new note, total now:', notes.length);
+            console.log('[Background] Added new note, total:', notes.length);
           }
-          console.log('[Background] About to save', notes.length, 'notes to IndexedDB');
-          bgStorage.saveNote(notes).then(() => {
-            console.log('[Background] 🟢 Saved to IndexedDB, total:', notes.length);
-            // Verify it was written
-            bgStorage.getAllNotes().then((verify) => {
-              console.log('[Background] 🟢 Verification: IndexedDB now has', verify.length, 'notes');
-              sendResponse({ success: true, count: notes.length });
-            });
+          chrome.storage.sync.set({ [STORAGE_KEY]: notes }, () => {
+            if (chrome.runtime.lastError) {
+              console.error('[Background] ✗ Save failed:', chrome.runtime.lastError);
+              sendResponse({ success: false });
+              return;
+            }
+            console.log('[Background] ✓ Saved', notes.length, 'notes to storage');
+            sendResponse({ success: true, count: notes.length });
           });
         });
         return true; // Will respond asynchronously
       }
       
       if (msg && msg.action === 'deleteNote' && msg.noteId) {
-        console.log('[Background] 🔵 deleteNote request for:', msg.noteId);
-        bgStorage.getAllNotes().then((notes) => {
-          console.log('[Background] Current notes before delete:', notes.length);
+        console.log('[Background] deleteNote request for:', msg.noteId);
+        chrome.storage.sync.get([STORAGE_KEY], (result) => {
+          if (chrome.runtime.lastError) {
+            console.error('[Background] ✗ Storage error:', chrome.runtime.lastError);
+            sendResponse({ success: false });
+            return;
+          }
+          const notes = result[STORAGE_KEY] || [];
           const filtered = notes.filter(n => n.id !== msg.noteId);
-          console.log('[Background] After filter:', filtered.length, 'notes');
-          bgStorage.saveNote(filtered).then(() => {
-            console.log('[Background] 🟢 Deleted note, IndexedDB now has:', filtered.length, 'notes');
+          chrome.storage.sync.set({ [STORAGE_KEY]: filtered }, () => {
+            if (chrome.runtime.lastError) {
+              console.error('[Background] ✗ Delete failed:', chrome.runtime.lastError);
+              sendResponse({ success: false });
+              return;
+            }
+            console.log('[Background] ✓ Deleted note, now has:', filtered.length, 'notes');
             sendResponse({ success: true, count: filtered.length });
           });
         });
@@ -249,13 +125,13 @@ try {
       
       if (msg && msg.action === 'postNow' && msg.noteId) {
         console.log('[Background] Received postNow for id:', msg.noteId);
-        // Load notes and find the note from IndexedDB
-        bgStorage.getAllNotes().then((notes) => {
+        // Load notes and find the note
+        chrome.storage.sync.get([STORAGE_KEY], async (result) => {
+          const notes = result[STORAGE_KEY] || [];
           const note = notes.find(n => n.id === msg.noteId);
           if (note) {
-            postScheduledNote(note).then(() => {
-              sendResponse({ ok: true });
-            });
+            await postScheduledNote(note);
+            sendResponse({ ok: true });
           } else {
             console.warn('[Background] postNow: note not found', msg.noteId);
             sendResponse({ ok: false, error: 'not found' });
@@ -307,7 +183,17 @@ try {
 }
 async function checkAndPostScheduledNotes() {
   try {
-    const notes = await bgStorage.getAllNotes();
+    const result = await new Promise((resolve, reject) => {
+      chrome.storage.sync.get([STORAGE_KEY], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result);
+        }
+      });
+    });
+
+    let notes = result[STORAGE_KEY] || [];
     
     const now = Date.now();
     let needsUpdate = false;
@@ -326,8 +212,17 @@ async function checkAndPostScheduledNotes() {
     }
 
     if (needsUpdate) {
-      // Save updated notes to IndexedDB
-      await bgStorage.saveNote(notes);
+      // Save updated notes to storage
+      await new Promise((resolve, reject) => {
+        chrome.storage.sync.set({ [STORAGE_KEY]: notes }, () => {
+          if (chrome.runtime.lastError) {
+            console.error('[Background] SAVE FAILED:', chrome.runtime.lastError);
+            reject(chrome.runtime.lastError);
+          } else {
+            resolve();
+          }
+        });
+      });
     }
   } catch (error) {
     console.error('[Background] Error checking scheduled posts:', error);
@@ -339,7 +234,7 @@ async function postScheduledNote(note) {
     
     // Get Bluesky session
     const sessionResult = await new Promise((resolve, reject) => {
-      chrome.storage.local.get(['blueskySession'], (result) => {
+      chrome.storage.sync.get(['blueskySession'], (result) => {
         if (chrome.runtime.lastError) {
           reject(chrome.runtime.lastError);
         } else {
@@ -381,7 +276,7 @@ async function postScheduledNote(note) {
           
           // Save the refreshed session
           await new Promise((resolve) => {
-            chrome.storage.local.set({ 'blueskySession': session }, () => {
+            chrome.storage.sync.set({ 'blueskySession': session }, () => {
               resolve();
             });
           });

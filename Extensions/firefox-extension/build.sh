@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Build script for Safari Web Extension local testing
+# NOTE: This script is for development/testing only
+# For Firefox, use build-firefox.sh instead
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -8,11 +10,11 @@ BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}🚀 Floating Notes - Safari Extension Builder${NC}\n"
+echo -e "${BLUE}🚀 SkyPost - Safari Extension Builder (DEV)${NC}\n"
 
 # Check if we're in the right directory
 if [ ! -f "manifest.json" ]; then
-    echo -e "${YELLOW}❌ manifest.json not found. Please run this script from the safari-extension directory.${NC}"
+    echo -e "${YELLOW}❌ manifest.json not found. Please run this script from the firefox-extension or safari-extension-pro directory.${NC}"
     exit 1
 fi
 

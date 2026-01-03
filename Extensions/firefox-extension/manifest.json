@@ -3,6 +3,13 @@
   "name": "SkyPost",
   "version": "1.0.0",
   "description": "Post Composer and Scheduler for Bluesky. Custom post editing, analytics and scheduling of your Bluesky Posts",
+  "author": "SkyPost",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "skypost@example.com",
+      "strict_min_version": "109.0"
+    }
+  },
   "permissions": [
     "storage",
     "scripting",

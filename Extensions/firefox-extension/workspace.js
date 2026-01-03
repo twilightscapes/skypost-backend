@@ -1627,91 +1627,112 @@ class NotesWorkspace {
   }
 }
 
-// Storage class - use chrome.storage.local (extension-wide, not origin-specific)
+// Storage class - use IndexedDB (50MB, persists across updates)
 class NotesDBStorage {
   constructor() {
-    this.storageKey = 'floatingNotes';
-    console.log('[DBStorage] Constructor - storageKey:', this.storageKey);
+    this.dbName = 'SkyPostDB';
+    this.storeName = 'notes';
+    this.db = null;
+    console.log('[DBStorage] Constructor - using IndexedDB');
   }
 
   async init() {
-    console.log('[DBStorage] init() - chrome.storage is extension-wide');
-    console.log('[DBStorage] Current storageKey:', this.storageKey);
-    return Promise.resolve();
+    console.log('[DBStorage] Initializing IndexedDB...');
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(this.dbName, 1);
+      
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ IndexedDB open error:', request.error);
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        this.db = request.result;
+        console.log('[DBStorage] ✓ IndexedDB initialized (50MB available)');
+        resolve();
+      };
+      
+      request.onupgradeneeded = (event) => {
+        console.log('[DBStorage] Creating object store...');
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains(this.storeName)) {
+          db.createObjectStore(this.storeName, { keyPath: 'id' });
+          console.log('[DBStorage] ✓ Object store created');
+        }
+      };
+    });
   }
 
   async saveNote(note) {
-    console.log('[DBStorage] saveNote() via message-passing - noteId:', note.id);
+    console.log('[DBStorage] saveNote() to IndexedDB - noteId:', note.id);
     
-    return new Promise((resolve) => {
-      try {
-        chrome.runtime.sendMessage({ action: 'saveNote', note: note }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[DBStorage] ✗ Message error:', chrome.runtime.lastError);
-            resolve();
-            return;
-          }
-          
-          if (response?.success) {
-            console.log('[DBStorage] ✓ saveNote successful, total notes:', response.count);
-          } else {
-            console.error('[DBStorage] ✗ saveNote failed');
-          }
-          resolve();
-        });
-      } catch (error) {
-        console.error('[DBStorage] ✗ saveNote error:', error);
+    if (!this.db) {
+      await this.init();
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.put(note);
+      
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ saveNote error:', request.error);
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        console.log('[DBStorage] ✓ saveNote successful for noteId:', note.id);
         resolve();
-      }
+      };
     });
   }
 
   async getAllNotes() {
-    console.log('[DBStorage] getAllNotes() via message-passing to background');
+    console.log('[DBStorage] getAllNotes() from IndexedDB');
     
-    return new Promise((resolve) => {
-      try {
-        chrome.runtime.sendMessage({ action: 'getAllNotes' }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[DBStorage] ✗ Message error:', chrome.runtime.lastError);
-            resolve([]);
-            return;
-          }
-          
-          const notes = response?.notes || [];
-          console.log('[DBStorage] ✓ getAllNotes returned', notes.length, 'notes from background');
-          resolve(notes);
-        });
-      } catch (error) {
-        console.error('[DBStorage] ✗ getAllNotes error:', error);
-        resolve([]);
-      }
+    if (!this.db) {
+      await this.init();
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readonly');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.getAll();
+      
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ getAllNotes error:', request.error);
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        const notes = request.result || [];
+        console.log('[DBStorage] ✓ getAllNotes returned', notes.length, 'notes');
+        resolve(notes);
+      };
     });
   }
 
   async deleteNote(id) {
-    console.log('[DBStorage] deleteNote() via message-passing - id:', id);
+    console.log('[DBStorage] deleteNote() from IndexedDB - id:', id);
     
-    return new Promise((resolve) => {
-      try {
-        chrome.runtime.sendMessage({ action: 'deleteNote', noteId: id }, (response) => {
-          if (chrome.runtime.lastError) {
-            console.error('[DBStorage] ✗ Message error:', chrome.runtime.lastError);
-            resolve();
-            return;
-          }
-          
-          if (response?.success) {
-            console.log('[DBStorage] ✓ deleteNote successful, remaining notes:', response.count);
-          } else {
-            console.error('[DBStorage] ✗ deleteNote failed');
-          }
-          resolve();
-        });
-      } catch (error) {
-        console.error('[DBStorage] ✗ deleteNote error:', error);
+    if (!this.db) {
+      await this.init();
+    }
+    
+    return new Promise((resolve, reject) => {
+      const transaction = this.db.transaction([this.storeName], 'readwrite');
+      const store = transaction.objectStore(this.storeName);
+      const request = store.delete(id);
+      
+      request.onerror = () => {
+        console.error('[DBStorage] ✗ deleteNote error:', request.error);
+        reject(request.error);
+      };
+      
+      request.onsuccess = () => {
+        console.log('[DBStorage] ✓ deleteNote successful for id:', id);
         resolve();
-      }
+      };
     });
   }
 }
@@ -1735,43 +1756,45 @@ class BlueskyIntegration {
 
   loadSession() {
     return new Promise((resolve) => {
-      // Try chrome.storage first
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get(['blueskySession'], (result) => {
-          if (result.blueskySession) {
+      // Primary: try chrome.storage.sync (synced to Firefox account)
+      if (chrome.storage && chrome.storage.sync) {
+        chrome.storage.sync.get(['blueskySession'], (result) => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Bluesky] chrome.storage.sync error:', chrome.runtime.lastError);
+            this.loadSessionFromLocalStorage();
+            resolve(this.session);
+            return;
+          }
+          
+          if (result && result.blueskySession) {
             this.session = result.blueskySession;
+            console.log('[Bluesky] Loaded session from chrome.storage.sync');
             resolve(this.session);
             return;
           }
 
-          // If not in chrome.storage, try localStorage
-          try {
-            const sessionStr = localStorage.getItem('blueskySession');
-            if (sessionStr) {
-              this.session = JSON.parse(sessionStr);
-              resolve(this.session);
-              return;
-            }
-          } catch (error) {
-            console.warn('[Bluesky] localStorage error:', error);
-          }
-
-          resolve(null);
+          // If not in sync, try localStorage
+          this.loadSessionFromLocalStorage();
+          resolve(this.session);
         });
       } else {
-        // If chrome.storage not available, use localStorage
-        try {
-          const sessionStr = localStorage.getItem('blueskySession');
-          if (sessionStr) {
-            this.session = JSON.parse(sessionStr);
-          } else {
-          }
-        } catch (error) {
-          console.warn('[Bluesky] localStorage error:', error);
-        }
-        resolve(this.session || null);
+        // Fallback to localStorage
+        this.loadSessionFromLocalStorage();
+        resolve(this.session);
       }
     });
+  }
+
+  loadSessionFromLocalStorage() {
+    try {
+      const sessionStr = localStorage.getItem('blueskySession');
+      if (sessionStr) {
+        this.session = JSON.parse(sessionStr);
+        console.log('[Bluesky] Loaded session from localStorage');
+      }
+    } catch (error) {
+      console.warn('[Bluesky] localStorage error:', error);
+    }
   }
 
   setupEventListeners() {
@@ -1805,7 +1828,7 @@ class BlueskyIntegration {
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         if (confirm('Logout from Bluesky?')) {
-          chrome.storage.local.remove('blueskySession');
+          chrome.storage.sync.remove('blueskySession');
           this.session = null;
           this.updateUI();
         }
@@ -1919,15 +1942,17 @@ class BlueskyIntegration {
         timestamp: Date.now()
       };
 
-      // Save to both chrome.storage and localStorage
+      // Save to chrome.storage.sync (primary) and localStorage (fallback)
       try {
-        chrome.storage.local.set({ blueskySession: sessionData });
+        chrome.storage.sync.set({ blueskySession: sessionData });
+        console.log('[Bluesky] Saved session to chrome.storage.sync');
       } catch (error) {
-        console.warn('[Bluesky] chrome.storage failed:', error);
+        console.warn('[Bluesky] chrome.storage.sync failed:', error);
       }
 
       try {
         localStorage.setItem('blueskySession', JSON.stringify(sessionData));
+        console.log('[Bluesky] Also backed up to localStorage');
       } catch (error) {
         console.warn('[Bluesky] localStorage failed:', error);
       }
@@ -2384,12 +2409,17 @@ class BlueskyIntegration {
             refreshJwt: newSession.refreshJwt || this.session.refreshJwt,
           };
           
-          // Save the refreshed session
-          await new Promise((resolve) => {
-            chrome.storage.local.set({ 'blueskySession': this.session }, () => {
-              resolve();
-            });
-          });
+          // Save the refreshed session to chrome.storage.sync and localStorage
+          try {
+            chrome.storage.sync.set({ 'blueskySession': this.session });
+          } catch (e) {
+            // ignore
+          }
+          try {
+            localStorage.setItem('blueskySession', JSON.stringify(this.session));
+          } catch (e) {
+            // ignore
+          }
         } else {
           const errorData = await refreshResponse.json().catch(() => ({}));
           console.warn('[Post] Token refresh failed:', refreshResponse.status, errorData);
