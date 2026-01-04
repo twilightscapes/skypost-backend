@@ -175,7 +175,12 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
       }
       
       if (license) {
-        const email = license.email || stripeEmail;
+        // Use the real Stripe email if available, otherwise keep the license email
+        const email = stripeEmail || license.email;
+        if (stripeEmail && license.email !== stripeEmail) {
+          console.log(`📧 Updating license email from ${license.email} to ${stripeEmail}`);
+          license.email = stripeEmail;
+        }
         console.log(`✅ Found license to activate: ${license.key}`);
         
         // Always activate, even if no email
