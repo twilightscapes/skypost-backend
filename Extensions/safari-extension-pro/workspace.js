@@ -863,6 +863,20 @@ class NotesWorkspace {
     const editor = document.getElementById('editor-content');
     this.currentNote.content = editor.innerHTML || editor.value || '';
 
+    // Add #Adblock hashtag if this is a video and hashtag isn't already present
+    if (this.currentNote.customLinkPreview) {
+      const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(this.currentNote.customLinkPreview.url || '');
+      
+      if (isYoutubeVideo && !this.currentNote.content.includes('#Adblock')) {
+        const plainText = editor.innerText || '';
+        if (plainText.trim()) {
+          this.currentNote.content = editor.innerHTML + ' #Adblock';
+        } else if (!this.currentNote.content.includes('#Adblock')) {
+          this.currentNote.content = '#Adblock';
+        }
+      }
+    }
+
     // DEBUG: Log what we're saving
     console.log('[Workspace] Saving note with customLinkPreview:', this.currentNote.customLinkPreview);
     

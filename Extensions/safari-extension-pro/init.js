@@ -101,12 +101,12 @@ function updateProButton(isPro) {
     // Show gear icon for pro users - small button
     btn.textContent = '⚙️';
     btn.title = 'Pro Settings';
-    btn.setAttribute('style', 'background: #667eea !important; border: none !important; padding: 4px 8px !important; font-size: 18px !important; cursor: pointer !important; border-radius: 4px !important;');
+    btn.setAttribute('style', 'background: #00a8e8 !important; border: none !important; padding: 4px 8px !important; font-size: 18px !important; cursor: pointer !important; border-radius: 4px !important;');
   } else {
     // Show "Upgrade" text for non-pro users - larger button
     btn.textContent = 'Upgrade';
     btn.title = 'Upgrade to Pro';
-    btn.setAttribute('style', 'background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; color: white !important; padding: 12px 28px !important; font-size: 14px !important; font-weight: 600 !important; border: none !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; min-width: 100px !important;');
+    btn.setAttribute('style', 'background: linear-gradient(135deg, #00a8e8 0%, #764ba2 100%) !important; color: white !important; padding: 12px 28px !important; font-size: 14px !important; font-weight: 600 !important; border: none !important; border-radius: 4px !important; cursor: pointer !important; white-space: nowrap !important; min-width: 100px !important;');
   }
 }
 
@@ -134,7 +134,7 @@ window.renderProModal = async function() {
   // Upgrade box
   if (!isPro) {
     html += `
-      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
+      <div style="background: linear-gradient(135deg, #00a8e8 0%, #764ba2 100%); color: white; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
         <h2 style="margin: 0 0 10px 0;">Upgrade to Pro</h2>
         <div style="font-size: 32px; font-weight: bold; margin: 10px 0;">$9.99/month</div>
         <div style="font-size: 13px; margin: 15px 0; line-height: 1.6;">
@@ -143,7 +143,7 @@ window.renderProModal = async function() {
           ✓ Custom link & video cards<br>
           ✓ Priority support
         </div>
-        <button id="pricing-page-btn" style="margin-top: 15px; width: 100%; padding: 12px 24px; background: white; color: #667eea; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
+        <button id="pricing-page-btn" style="margin-top: 15px; width: 100%; padding: 12px 24px; background: white; color: #00a8e8; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer;">
           Get Pro Access
         </button>
       </div>
@@ -182,7 +182,7 @@ window.renderProModal = async function() {
         <div style="font-weight: 600; color: #333; margin-bottom: 16px; font-size: 16px;">🔑 Already have a license?</div>
         <div style="display: flex; gap: 8px; margin-bottom: 16px;">
           <input type="text" id="license-key-input" placeholder="Paste your license key here..." style="flex: 1; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace;">
-          <button id="license-activate-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
+          <button id="license-activate-btn" style="padding: 10px 20px; background: linear-gradient(135deg, #00a8e8 0%, #764ba2 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
             Activate
           </button>
         </div>
@@ -201,7 +201,7 @@ window.renderProModal = async function() {
           <button id="backup-btn" style="padding: 12px; background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
             💾 Backup All Data
           </button>
-          <button id="restore-btn" style="padding: 12px; background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
+          <button id="restore-btn" style="padding: 12px; background: linear-gradient(135deg, #00a8e8 0%, #00a8e8 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
             📥 Restore from Backup
           </button>
           <button id="clear-data-btn" style="padding: 12px; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; font-size: 14px;">
