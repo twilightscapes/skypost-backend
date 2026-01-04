@@ -1006,6 +1006,13 @@ class NotesWorkspace {
         case 'has-image':
           filteredNotes = this.allNotes.filter(n => n.content.includes('<img'));
           break;
+        case 'has-video':
+          filteredNotes = this.allNotes.filter(n => 
+            n.content.includes('<video') || 
+            n.content.match(/\.(mp4|webm|mov|mkv|avi|flv)/i) ||
+            n.content.match(/(youtu\.be|youtube\.com|vimeo\.com|twitch\.tv|dailymotion\.com)/i)
+          );
+          break;
         case 'text-only':
           filteredNotes = this.allNotes.filter(n => !n.content.includes('<img'));
           break;

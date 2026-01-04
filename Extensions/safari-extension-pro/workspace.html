@@ -1462,15 +1462,15 @@
       </div>
 
       <!-- Pro Feature: Storage Dashboard -->
-      <div id="pro-storage-dashboard" style="padding: 0.5rem 1rem; border-bottom: 1px solid rgba(0, 0, 0, 0.1); background: #f3f4f6;" hidden>
+      <div id="pro-storage-dashboard" style="padding: 0.5rem 1rem; border-bottom: 1px solid rgba(0, 0, 0, 0.1); background: linear-gradient(90deg, #f0f9ff 0%, #f5f3ff 100%);" hidden>
         <div style="display: flex; gap: 0.5rem; align-items: center;">
           <div style="flex: 1;">
-            <div style="width: 100%; height: 16px; background: #e5e7eb; border-radius: 8px; overflow: hidden; position: relative;">
-              <div id="pro-storage-bar" style="height: 100%; background: linear-gradient(90deg, #f093fb 0%, #f5576c 100%); width: 0%; transition: width 0.3s ease;"></div>
-              <div id="pro-storage-stats" style="position: absolute; top: 50%; left: 4px; transform: translateY(-50%); font-size: 0.65rem; color: white; font-weight: 600; white-space: nowrap; pointer-events: none; text-shadow: 1px 1px 0 rgba(0, 0, 0, 0.6);">Loading...</div>
+            <div style="width: 100%; height: 20px; background: #e5e7eb; border-radius: 6px; overflow: hidden; position: relative; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.05);">
+              <div id="pro-storage-bar" style="height: 100%; background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 100%); width: 0%; transition: width 0.3s ease;"></div>
+              <div id="pro-storage-stats" style="position: absolute; top: 50%; left: 6px; transform: translateY(-50%); font-size: 0.7rem; color: #1f2937; font-weight: 700; white-space: nowrap; pointer-events: none;">Loading...</div>
             </div>
           </div>
-          <button id="pro-request-storage-btn" style="padding: 0.4rem 0.6rem; background: #d1d5db; color: #6b7280; border: 1px solid #9ca3af; border-radius: 4px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">+</button>
+          <button id="pro-request-storage-btn" title="Request persistent storage from your browser" style="padding: 0.4rem 0.6rem; background: #3b82f6; color: white; border: none; border-radius: 4px; font-size: 0.9rem; font-weight: 600; cursor: pointer; white-space: nowrap; flex-shrink: 0; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; transition: background 0.2s;">+</button>
         </div>
       </div>
 
@@ -1481,6 +1481,7 @@
             <!-- Type filters -->
             <button class="filter-btn" data-filter="all" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">All</button>
             <button class="filter-btn" data-filter="has-image" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Image</button>
+            <button class="filter-btn" data-filter="has-video" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Video</button>
             
             <!-- Status filters -->
             <button class="filter-btn" data-filter="scheduled" style="background: #e5e7eb; color: #1f2937; padding: 0.4rem 0.75rem; border: none; border-radius: 4px; font-size: 0.75rem; cursor: pointer; font-weight: 500;">Scheduled</button>
