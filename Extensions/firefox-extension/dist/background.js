@@ -182,47 +182,83 @@ try {
   // ignore if runtime not available
 }
 async function checkAndPostScheduledNotes() {
+  console.log('[Background] ========== checkAndPostScheduledNotes called ==========');
   try {
+    // Get notes from chrome.storage.sync (IndexedDB is synced there by workspace)
+    let notes = [];
+    
+    console.log('[Background] Querying chrome.storage.sync for floatingNotes...');
     const result = await new Promise((resolve, reject) => {
-      chrome.storage.sync.get([STORAGE_KEY], (result) => {
+      chrome.storage.sync.get(['floatingNotes'], (result) => {
         if (chrome.runtime.lastError) {
+          console.error('[Background] chrome.storage.sync error:', chrome.runtime.lastError);
           reject(chrome.runtime.lastError);
         } else {
+          console.log('[Background] chrome.storage.sync returned:', result);
           resolve(result);
         }
       });
     });
-
-    let notes = result[STORAGE_KEY] || [];
+    
+    notes = result.floatingNotes || [];
+    console.log('[Background] Found', notes.length, 'scheduled notes from chrome.storage.sync');
     
     const now = Date.now();
+    console.log('[Background] Current timestamp:', now);
     let needsUpdate = false;
 
     for (const note of notes) {
+      console.log('[Background] Checking note:', { id: note.id, status: note.status, scheduledFor: note.scheduledFor });
       if (note.status === 'scheduled' && note.scheduledFor) {
         // scheduledFor is now a timestamp (ms)
         const timeUntil = note.scheduledFor - now;
+        console.log('[Background] Scheduled note found - timeUntil:', timeUntil, 'ms');
         
         if (timeUntil <= 0) {
+          console.log('[Background] TIME TO POST! Calling postScheduledNote for:', note.title);
           const statusBefore = note.status;
           await postScheduledNote(note);
+          console.log('[Background] After postScheduledNote - status changed from', statusBefore, 'to', note.status);
           needsUpdate = true;
+        } else {
+          console.log('[Background] Not yet time for this note, waiting', timeUntil, 'ms');
         }
       }
     }
 
     if (needsUpdate) {
-      // Save updated notes to storage
+      console.log('[Background] Updates needed, notifying workspace...');
+      // Notify workspace to update the posted notes in IndexedDB
+      for (const note of notes) {
+        if (note.status === 'published' || note.status === 'failed') {
+          console.log('[Background] Sending update for note:', note.id, 'status:', note.status);
+          chrome.runtime.sendMessage({
+            action: 'updateScheduledNote',
+            note: note
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.warn('[Background] Workspace update error:', chrome.runtime.lastError);
+            } else {
+              console.log('[Background] ✓ Workspace updated note:', note.id);
+            }
+          });
+        }
+      }
+      
+      // Also save to chrome.storage.sync as fallback
       await new Promise((resolve, reject) => {
         chrome.storage.sync.set({ [STORAGE_KEY]: notes }, () => {
           if (chrome.runtime.lastError) {
-            console.error('[Background] SAVE FAILED:', chrome.runtime.lastError);
-            reject(chrome.runtime.lastError);
+            console.warn('[Background] chrome.storage.sync save failed:', chrome.runtime.lastError);
+            resolve();
           } else {
+            console.log('[Background] ✓ Also saved to chrome.storage.sync');
             resolve();
           }
         });
       });
+    } else {
+      console.log('[Background] No updates needed');
     }
   } catch (error) {
     console.error('[Background] Error checking scheduled posts:', error);
@@ -298,7 +334,7 @@ async function postScheduledNote(note) {
       title: note.title,
       hasContent: !!note.content,
       hasCustomPreview: !!note.customLinkPreview,
-      previewUrl: note.customLinkPreview?.url
+      customLinkPreview: note.customLinkPreview
     });
 
     // Convert <br> to newlines
@@ -325,6 +361,8 @@ async function postScheduledNote(note) {
     };
     // Handle custom link preview if present
     let hasLinkPreview = false;
+    console.log('[Background] customLinkPreview object:', note.customLinkPreview);
+    console.log('[Background] customLinkPreview.url:', note.customLinkPreview?.url);
     if (note.customLinkPreview && note.customLinkPreview.url) {
       const preview = note.customLinkPreview;
       postRecord.embed = {

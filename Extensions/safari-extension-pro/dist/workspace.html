@@ -661,6 +661,12 @@
       padding: 0.5rem;
     }
 
+    .rich-editor.empty-placeholder::before {
+      content: attr(data-placeholder);
+      color: #9ca3af;
+      pointer-events: none;
+    }
+
     .char-counter {
       padding: 0.75rem 1.5rem;
       background: #f9fafb;
@@ -1440,8 +1446,8 @@
       <div class="sidebar-header">
         <h2>🦋 SkyPost</h2>
         <div style="display: flex; gap: 0.5rem;">
-          <button id="pro-settings-btn" title="Pro Features & License" style="background: #667eea; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 6px;">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button id="pro-settings-btn" title="Pro Features & License" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
             <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"></path>
           </svg>
@@ -1580,7 +1586,7 @@
       <div class="editor-toolbar">
         <div style="flex: 1;"></div>
         <div class="color-picker-container">
-          <button type="button" class="toolbar-btn" id="btn-color" title="Post Color" style="display: flex; align-items: center; justify-content: center;">
+          <button type="button" class="toolbar-btn" id="btn-color" title="Note Color" style="display: flex; align-items: center; justify-content: center;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="10"></circle>
               <circle cx="12" cy="12" r="6"></circle>
@@ -1599,7 +1605,7 @@
       </div>
 
       <div class="editor-content">
-        <textarea class="rich-editor" id="editor-content" placeholder="Click &quot;+ New&quot; to create a post or select one from the list to start editing..." style="resize: none; font-family: inherit; width: 100%; min-height: 200px; padding: 0.75rem; border: none; outline: none; font-size: 1rem; line-height: 1.5;"></textarea>
+        <div class="rich-editor" id="editor-content" contenteditable="true" role="textbox" aria-multiline="true" data-placeholder="Click &quot;+ New&quot; to create a post or select one from the list to start editing..." style="resize: none; font-family: inherit; width: 100%; min-height: 200px; padding: 0.75rem; border: none; outline: none; font-size: 1rem; line-height: 1.5; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;"></div>
       </div>
 
       <div class="char-counter" id="char-counter">
@@ -1678,7 +1684,6 @@
                   <div id="link-preview-title" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem;"></div>
                   <div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3;"></div>
                 </div>
-                <button type="button" id="link-preview-edit-btn" style="background: #667eea; color: white; border: none; padding: 0.5rem 1rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; width: 100%;">✎ Edit Preview (Pro)</button>
               </div>
 
               <!-- Link Preview Edit Modal (Pro Feature) -->

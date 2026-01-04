@@ -2,27 +2,23 @@
 class NotesWorkspace {
   constructor() {
     this.db = new NotesDBStorage();
-    this.backupManager = new BackupManager(); // Initialize backup manager
     this.currentNote = null;
     this.allNotes = [];
     this.colors = ['#ffffff', '#fef08a', '#fca5a5', '#bfdbfe', '#bbf7d0', '#e9d5ff', '#fed7aa', '#f3f3f3'];
     this.currentFilter = 'all'; // Track current filter
-    this.currentSearchTerm = ''; // Track current search term
     this.init();
   }
 
   async init() {
     try {
-      console.log('[Workspace] Initializing...');
       
       // Load notes from storage
       this.allNotes = await this.db.getAllNotes();
-      console.log('[Workspace] Loaded notes:', this.allNotes.length);
 
       // Set up UI
       this.setupEventListeners();
+      this.setupMessageListener();
       await this.renderNotesList();
-      console.log('[Workspace] UI rendered');
 
       // Select first note if exists
       if (this.allNotes.length > 0) {
@@ -64,11 +60,78 @@ class NotesWorkspace {
       }
 
     } catch (error) {
-      console.error('[Workspace] INITIALIZATION FAILED:', error);
+      // Silently fail - initialization error
+    }
+  }
+
+  setupMessageListener() {
+    console.log('[Workspace] Setting up message listener');
+    if (chrome && chrome.runtime && chrome.runtime.onMessage) {
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        console.log('[Workspace] ✓ Message received:', message?.action);
+        
+        if (message && message.action === 'getScheduledNotes') {
+          console.log('[Workspace] Handling getScheduledNotes');
+          console.log('[Workspace] this.db:', !!this.db, 'getAllNotes:', typeof this.db?.getAllNotes);
+          
+          if (!this.db) {
+            console.log('[Workspace] DB not ready, returning empty');
+            sendResponse({ notes: [] });
+            return true;
+          }
+          
+          this.db.getAllNotes().then(notes => {
+            console.log('[Workspace] Got', notes.length, 'total notes');
+            const schedulableNotes = notes.filter(n => n.scheduledFor && !n.status?.includes('published') && !n.status?.includes('failed'));
+            console.log('[Workspace] Filtered to', schedulableNotes.length, 'schedulable notes');
+            console.log('[Workspace] Sending response with', schedulableNotes.length, 'notes');
+            sendResponse({ notes: schedulableNotes });
+          }).catch(err => {
+            console.error('[Workspace] Error getting notes:', err);
+            sendResponse({ notes: [] });
+          });
+          return true;
+        } else if (message && message.action === 'updateScheduledNote') {
+          console.log('[Workspace] Handling updateScheduledNote:', message.note?.id, message.note?.status);
+          // Background worker updated a note status - refresh the UI
+          if (this.db && message.note) {
+            // Save the updated note from background worker to ensure IndexedDB is in sync
+            this.db.saveNote(message.note).then(() => {
+              return this.db.getAllNotes();
+            }).then(notes => {
+              this.allNotes = notes;
+              console.log('[Workspace] ✓ Updated IndexedDB, refreshing UI');
+              // Refresh the notes list to show updated status
+              this.renderNotesList();
+              // If current note was updated, refresh its display too
+              if (this.currentNote && this.currentNote.id === message.note.id) {
+                const updated = notes.find(n => n.id === message.note.id);
+                if (updated) {
+                  this.currentNote = updated;
+                  this.selectNote(updated);
+                }
+              }
+              sendResponse({ success: true });
+            }).catch(err => {
+              console.error('[Workspace] Error updating notes:', err);
+              sendResponse({ success: false });
+            });
+          } else {
+            sendResponse({ success: false });
+          }
+          return true;
+        }
+      });
+    } else {
+      console.log('[Workspace] chrome.runtime.onMessage not available');
     }
   }
 
   setupEventListeners() {
+    // Only set up once
+    if (this._eventListenersSetUp) return;
+    this._eventListenersSetUp = true;
+
     // Close button
     document.getElementById('close-workspace').addEventListener('click', () => {
       window.close();
@@ -83,9 +146,6 @@ class NotesWorkspace {
     document.getElementById('clear-all-btn').addEventListener('click', () => {
       this.clearAllNotes();
     });
-
-    // Pro storage dashboard
-    this.setupProStorageDashboard();
 
     // Toolbar buttons
     document.getElementById('btn-color').addEventListener('click', (e) => {
@@ -163,7 +223,6 @@ class NotesWorkspace {
       
       const renderCalendarMonth = () => {
         const filteredNotes = getFilteredNotes();
-        console.log('[Calendar] Total scheduled notes:', self.allNotes.filter(n => n.status === 'scheduled').length, '| Filtered notes for calendar:', filteredNotes.length);
         
         if (filteredNotes.length === 0) {
           calendarView.innerHTML = '<div style="text-align: center; color: #6b7280; padding: 2rem;">No posts to display</div>';
@@ -176,7 +235,6 @@ class NotesWorkspace {
           const dateStr = date.toISOString().split('T')[0];
           if (!notesByDate[dateStr]) notesByDate[dateStr] = [];
           notesByDate[dateStr].push(note);
-          console.log('[Calendar] Post on', dateStr, ':', note.title);
         });
         
         const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -302,13 +360,10 @@ class NotesWorkspace {
     });
 
     // Analytics tab handler
-    document.getElementById('tab-analytics').addEventListener('click', async () => {
+    document.getElementById('tab-analytics').addEventListener('click', () => {
       // Check Pro license
       if (!window.licenseManager.canUseFeature('analytics')) {
         window.bluesky.showMessage('📊 Analytics is a Pro feature', 'info');
-        if (window.renderProModal) {
-          await window.renderProModal();
-        }
         document.getElementById('pro-modal').classList.add('active');
         return;
       }
@@ -347,6 +402,18 @@ class NotesWorkspace {
 
     document.getElementById('btn-image').addEventListener('click', (e) => {
       e.preventDefault();
+      
+      // Check if there's already a custom link preview (which creates an embed)
+      if (this.currentNote && this.currentNote.customLinkPreview) {
+        const confirmed = confirm('This post already has a link preview card. Bluesky only allows one embed per post.\n\nRemove the link preview and add the image?');
+        if (!confirmed) return;
+        
+        // Remove the custom link preview
+        this.currentNote.customLinkPreview = null;
+        const preview = document.getElementById('editor-link-preview');
+        if (preview) preview.style.display = 'none';
+      }
+      
       const fileInput = document.createElement('input');
       fileInput.type = 'file';
       fileInput.accept = 'image/*';
@@ -387,7 +454,8 @@ class NotesWorkspace {
       }
       // Save current note before scheduling
       this.currentNote.title = document.getElementById('note-title').value || 'Untitled Post';
-      this.currentNote.content = document.getElementById('editor-content').value;
+      const editor = document.getElementById('editor-content');
+      this.currentNote.content = editor.innerHTML || editor.value || '';
       this.showScheduleModal();
     });
 
@@ -453,11 +521,11 @@ class NotesWorkspace {
     // Hide placeholder when typing
     const editorContent = document.getElementById('editor-content');
     if (editorContent) {
-      // Now that we use textarea, 'input' event will fire reliably
+      // Listen for input on contenteditable div
       editorContent.addEventListener('input', () => {
         this.updatePlaceholder();
         this.updateCharCounter();
-        const text = editorContent.value;
+        const text = editorContent.textContent || '';
         this.detectAndShowEditorLinkPreview(text);
       });
     }
@@ -473,7 +541,8 @@ class NotesWorkspace {
           // Save current note before switching
           if (this.currentNote) {
             this.currentNote.title = document.getElementById('note-title').value || 'Untitled Post';
-            this.currentNote.content = document.getElementById('editor-content').value;
+            const editor = document.getElementById('editor-content');
+            this.currentNote.content = editor.innerHTML || '';
           }
           this.selectNote(note);
         }
@@ -498,7 +567,8 @@ class NotesWorkspace {
             imageData = imgMatch[1];
           }
           
-          window.bluesky.sendToComposer(text, imageData);
+          // Pass customLinkPreview too
+          window.bluesky.sendToComposer(text, imageData, note.customLinkPreview);
         }
       }
 
@@ -567,7 +637,17 @@ class NotesWorkspace {
   }
 
   updatePlaceholder() {
-    // Textarea doesn't need placeholder management - handled by placeholder attribute
+    const editor = document.getElementById('editor-content');
+    if (!editor) return;
+    
+    const isEmpty = !editor.textContent || editor.textContent.trim() === '';
+    const placeholder = editor.getAttribute('data-placeholder');
+    
+    if (isEmpty && placeholder) {
+      editor.classList.add('empty-placeholder');
+    } else {
+      editor.classList.remove('empty-placeholder');
+    }
   }
 
   updateCharCounter() {
@@ -576,8 +656,8 @@ class NotesWorkspace {
     const charCount = document.getElementById('char-count');
     const MAX_CHARS = 300;
     
-    // Get text from textarea
-    const text = editor.value || '';
+    // Get text from contenteditable div
+    const text = editor.textContent || '';
     const count = text.length;
     
     charCount.textContent = count;
@@ -622,24 +702,23 @@ class NotesWorkspace {
     // Update UI
     document.getElementById('note-title').value = note.title;
     
-    // Strip HTML tags from content for textarea display
-    const textarea = document.getElementById('editor-content');
-    const temp = document.createElement('div');
-    temp.innerHTML = note.content;
-    textarea.value = temp.textContent || temp.innerText || note.content;
+    // Set content in contenteditable div - preserve HTML (images, etc)
+    const editor = document.getElementById('editor-content');
+    editor.innerHTML = note.content || '';
     
     // Restore link preview if it exists
     const preview = document.getElementById('editor-link-preview');
     if (preview) {
-      preview.style.display = 'none';
-      preview.innerHTML = '';
-      
+      // Only update if there's a custom preview to show
       if (note.customLinkPreview) {
+        preview.style.display = 'block';
         this.displayEditorLinkPreview(
           note.customLinkPreview.url,
           note.customLinkPreview,
           preview
         );
+      } else {
+        preview.style.display = 'none';
       }
     }
     
@@ -697,12 +776,20 @@ class NotesWorkspace {
     if (!this.currentNote) return;
 
     this.currentNote.title = document.getElementById('note-title').value || 'Untitled Post';
-    this.currentNote.content = document.getElementById('editor-content').value;
+    // Save content from textarea/contenteditable - try innerHTML first (for images), fall back to value
+    const editor = document.getElementById('editor-content');
+    this.currentNote.content = editor.innerHTML || editor.value || '';
 
+    // DEBUG: Log what we're saving
+    console.log('[Workspace] Saving note with customLinkPreview:', this.currentNote.customLinkPreview);
+    
     await this.db.saveNote(this.currentNote);
     
-    // Refresh list to show updated content
+    // Refresh the UI to show updated title in the list
     await this.renderNotesList();
+    
+    // Re-select the current note to refresh the editor display
+    this.selectNote(this.currentNote);
   }
 
   async deleteCurrentNote() {
@@ -757,257 +844,6 @@ class NotesWorkspace {
     document.getElementById('editor-content').innerHTML = '';
     this.updatePlaceholder();
     await this.renderNotesList();
-  }
-
-  setupProStorageDashboard() {
-    const proDashboard = document.getElementById('pro-storage-dashboard');
-    const proRequestBtn = document.getElementById('pro-request-storage-btn');
-    
-    if (!proDashboard || !proRequestBtn) return;
-    
-    // Check if Pro user
-    const isProUser = typeof window.licenseManager !== 'undefined' && window.licenseManager.isProUser();
-    
-    if (isProUser) {
-      proDashboard.hidden = false;
-      proRequestBtn.addEventListener('click', () => {
-        this.requestPersistentStorage();
-      });
-      // Update storage display periodically
-      this.updateProStorageDashboard();
-      setInterval(() => this.updateProStorageDashboard(), 2000);
-    } else {
-      // If not Pro yet, check again after a short delay (in case license is still loading)
-      setTimeout(() => {
-        if (typeof window.licenseManager !== 'undefined' && window.licenseManager.isProUser()) {
-          proDashboard.hidden = false;
-          proRequestBtn.addEventListener('click', () => {
-            this.requestPersistentStorage();
-          });
-          this.updateProStorageDashboard();
-          setInterval(() => this.updateProStorageDashboard(), 2000);
-        }
-      }, 100);
-    }
-  }
-
-  requestPersistentStorage() {
-    if (!navigator.storage || !navigator.storage.persist) {
-      console.warn('[Workspace] Persistent storage not supported');
-      return;
-    }
-
-    navigator.storage.persist().then((persistent) => {
-      if (persistent) {
-        this.updateProStorageDashboard();
-      }
-    }).catch((error) => {
-      console.error('[Workspace] Persistent storage error:', error);
-    });
-  }
-
-  async updateProStorageDashboard() {
-    try {
-      if (navigator.storage && navigator.storage.estimate) {
-        const estimate = await navigator.storage.estimate();
-        const used = estimate.usage || 0;
-        const quota = estimate.quota || 0;
-        const percent = quota > 0 ? (used / quota) * 100 : 0;
-
-        // Update bar
-        const bar = document.getElementById('pro-storage-bar');
-        if (bar) bar.style.width = percent + '%';
-
-        // Format bytes
-        const formatBytes = (bytes) => {
-          if (bytes === 0) return '0 B';
-          const k = 1024;
-          const sizes = ['B', 'KB', 'MB', 'GB'];
-          const i = Math.floor(Math.log(bytes) / Math.log(k));
-          return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
-        };
-
-        const stats = document.getElementById('pro-storage-stats');
-        if (stats) {
-          stats.textContent = `${formatBytes(used)} of ${formatBytes(quota)} (${Math.round(percent)}%)`;
-        }
-      }
-    } catch (error) {
-      console.warn('[Workspace] Storage estimate error:', error);
-    }
-  }
-
-  async handleBackup() {
-    try {
-      const statusEl = document.getElementById('backup-status');
-      if (this.backupManager) {
-        const result = await this.backupManager.createBackup();
-        if (result.success) {
-          this.showBackupStatus(`✅ Backup created! (${result.count} notes)`, 'success');
-        } else {
-          this.showBackupStatus(`❌ Backup failed: ${result.error}`, 'error');
-        }
-      }
-    } catch (error) {
-      console.error('[Workspace] Backup error:', error);
-      this.showBackupStatus('❌ Backup failed: ' + error.message, 'error');
-    }
-  }
-
-  showBackupStatus(message, type = 'info') {
-    const statusEl = document.getElementById('backup-status');
-    if (statusEl) {
-      statusEl.textContent = message;
-      statusEl.className = 'backup-status ' + type;
-      statusEl.style.display = 'block';
-      
-      // Auto-hide after 5 seconds
-      setTimeout(() => {
-        statusEl.style.display = 'none';
-      }, 5000);
-    }
-  }
-
-  openRestoreModal() {
-    const modal = document.getElementById('restore-modal');
-    if (modal) {
-      modal.classList.add('active');
-    }
-  }
-
-  closeRestoreModal() {
-    const modal = document.getElementById('restore-modal');
-    if (modal) {
-      modal.classList.remove('active');
-      // Reset form
-      document.getElementById('restore-input').value = '';
-      document.getElementById('restore-preview').classList.remove('active');
-      document.getElementById('restore-progress').classList.remove('active');
-      document.getElementById('restore-confirm-btn').disabled = true;
-    }
-  }
-
-  setupRestoreModalHandlers() {
-    const modal = document.getElementById('restore-modal');
-    if (!modal) return;
-
-    const dropZone = document.getElementById('restore-drop-zone');
-    const fileInput = document.getElementById('restore-input');
-    const browseBtn = document.getElementById('restore-browse-btn');
-    const cancelBtn = document.getElementById('restore-cancel-btn');
-    const confirmBtn = document.getElementById('restore-confirm-btn');
-
-    // Browse button
-    browseBtn.addEventListener('click', () => {
-      fileInput.click();
-    });
-
-    // File input change
-    fileInput.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) {
-        this.previewRestoreFile(file);
-      }
-    });
-
-    // Drag and drop
-    dropZone.addEventListener('dragover', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.add('dragover');
-    });
-
-    dropZone.addEventListener('dragleave', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.remove('dragover');
-    });
-
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      dropZone.classList.remove('dragover');
-      
-      const files = e.dataTransfer.files;
-      if (files.length > 0 && files[0].type === 'application/json') {
-        fileInput.files = files;
-        this.previewRestoreFile(files[0]);
-      }
-    });
-
-    // Cancel button
-    cancelBtn.addEventListener('click', () => {
-      this.closeRestoreModal();
-    });
-
-    // Confirm button
-    confirmBtn.addEventListener('click', async () => {
-      const file = fileInput.files[0];
-      if (file && this.backupManager) {
-        await this.performRestore(file);
-      }
-    });
-  }
-
-  async previewRestoreFile(file) {
-    try {
-      if (!this.backupManager) {
-        console.error('BackupManager not initialized');
-        return;
-      }
-
-      const preview = await this.backupManager.previewBackup(file);
-      if (preview.success) {
-        document.getElementById('restore-preview-date').textContent = preview.date + ' ' + preview.time;
-        document.getElementById('restore-preview-notes').textContent = preview.noteCount;
-        document.getElementById('restore-preview-settings').textContent = preview.settingCount;
-        document.getElementById('restore-preview').classList.add('active');
-        document.getElementById('restore-confirm-btn').disabled = false;
-      } else {
-        alert('Invalid backup file: ' + preview.error);
-        document.getElementById('restore-input').value = '';
-      }
-    } catch (error) {
-      console.error('[Workspace] Preview error:', error);
-      alert('Failed to preview backup file');
-    }
-  }
-
-  async performRestore(file) {
-    try {
-      if (!this.backupManager) {
-        console.error('BackupManager not initialized');
-        return;
-      }
-
-      const progressEl = document.getElementById('restore-progress');
-      const progressText = document.getElementById('restore-progress-text');
-      const confirmBtn = document.getElementById('restore-confirm-btn');
-
-      // Show progress
-      progressEl.classList.add('active');
-      confirmBtn.disabled = true;
-
-      const result = await this.backupManager.restoreBackup(file, (msg) => {
-        progressText.textContent = msg;
-      });
-
-      if (result.success) {
-        progressText.textContent = '✅ Restore successful! Reloading...';
-        setTimeout(() => {
-          window.location.reload();
-        }, 2000);
-      } else {
-        progressEl.classList.remove('active');
-        confirmBtn.disabled = false;
-        alert('Restore failed: ' + result.error);
-      }
-    } catch (error) {
-      console.error('[Workspace] Restore error:', error);
-      alert('Failed to restore backup: ' + error.message);
-      document.getElementById('restore-progress').classList.remove('active');
-      document.getElementById('restore-confirm-btn').disabled = false;
-    }
   }
 
   async renderNotesList() {
@@ -1070,27 +906,6 @@ class NotesWorkspace {
       });
     });
 
-    // Add search functionality
-    const searchInput = document.getElementById('notes-search');
-    const clearAllButton = document.getElementById('clear-all');
-    if (searchInput) {
-      searchInput.addEventListener('input', (e) => {
-        this.currentSearchTerm = e.target.value.toLowerCase();
-        this.renderNotesList();
-      });
-    }
-    
-    // Clear all button handler
-    if (clearAllButton) {
-      clearAllButton.addEventListener('click', () => {
-        searchInput.value = '';
-        this.currentSearchTerm = '';
-        this.currentFilter = 'all';
-        this.updateFilterButtons();
-        this.renderNotesList();
-      });
-    }
-
     // Update filter button styles
     this.updateFilterButtons();
 
@@ -1108,6 +923,9 @@ class NotesWorkspace {
         case 'text-only':
           filteredNotes = this.allNotes.filter(n => !n.content.includes('<img'));
           break;
+        case 'empty':
+          filteredNotes = this.allNotes.filter(n => !n.content || n.content.trim() === '');
+          break;
         case 'scheduled':
           filteredNotes = this.allNotes.filter(n => n.status === 'scheduled');
           break;
@@ -1119,15 +937,6 @@ class NotesWorkspace {
           filteredNotes = this.allNotes;
           break;
       }
-    }
-
-    // Apply search filter
-    if (this.currentSearchTerm) {
-      filteredNotes = filteredNotes.filter(n => {
-        const titleMatch = (n.title || '').toLowerCase().includes(this.currentSearchTerm);
-        const contentMatch = (n.content || '').toLowerCase().includes(this.currentSearchTerm);
-        return titleMatch || contentMatch;
-      });
     }
 
     // Sort by date (newest first)
@@ -1162,12 +971,10 @@ class NotesWorkspace {
             let timeInfo = '';
             
             if (note.status === 'scheduled' && note.scheduledFor) {
-              const scheduledDate = new Date(note.scheduledFor);
-              const dateStr = scheduledDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-              const timeStr = scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
               const timeLeft = note.scheduledFor - Date.now();
               if (timeLeft > 0) {
-                statusBadge = `<span class="status-badge scheduled">${dateStr} at ${timeStr}</span>`;
+                timeInfo = this.formatTimeUntil(timeLeft);
+                statusBadge = `<span class="status-badge scheduled">📅 ${timeInfo}</span>`;
               } else {
                 statusBadge = `<span class="status-badge expired">⏰ Posting</span>`;
               }
@@ -1200,12 +1007,11 @@ class NotesWorkspace {
     const allFilteredNotes = [...groups.draft, ...groups.scheduled, ...groups.published, ...groups.failed];
     container.innerHTML = renderSection(allFilteredNotes, '');
 
-    // RIGHT PANEL: Show status dashboard with scheduled/failed/published
-    this.renderPostSummary(groups.scheduled, groups.published, groups.failed);
+    // RIGHT PANEL: Show status dashboard with published/failed only (scheduled is in left sidebar)
+    this.renderPostSummary(groups.published, groups.failed);
   }
 
-  renderPostSummary(scheduledNotes, publishedNotes, failedNotes) {
-    const scheduledContainer = document.getElementById('scheduled-posts-container');
+  renderPostSummary(publishedNotes, failedNotes) {
     const publishedContainer = document.getElementById('published-posts-container');
     const failedContainer = document.getElementById('failed-posts-container');
 
@@ -1283,51 +1089,6 @@ class NotesWorkspace {
       });
     } else {
       publishedContainer.innerHTML = '';
-    }
-
-    // Render scheduled posts LAST - clickable to select from left
-    if (scheduledNotes && scheduledNotes.length > 0) {
-      console.log('[renderPostSummary] Rendering', scheduledNotes.length, 'scheduled posts');
-      scheduledContainer.innerHTML = `
-        <div style="margin-bottom: 1.5rem;">
-          <h4 style="font-size: 0.9rem; font-weight: 600; margin-bottom: 0.5rem; color: #0284c7;">Scheduled (${scheduledNotes.length})</h4>
-          <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-            ${scheduledNotes.map(note => {
-              const scheduledDate = new Date(note.scheduledFor);
-              const dateStr = scheduledDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-              const timeStr = scheduledDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-              const timeLeft = note.scheduledFor - Date.now();
-              let countdownStr = '';
-              if (timeLeft > 0) {
-                countdownStr = this.formatTimeUntil(timeLeft);
-              } else {
-                countdownStr = 'Posting soon';
-              }
-              console.log('[renderPostSummary] Post:', note.title, 'scheduled:', note.scheduledFor, 'dateStr:', dateStr, 'timeStr:', timeStr);
-              return `
-                <div class="scheduled-post-item" data-note-id="${note.id}" style="padding: 0.75rem; background: #dbeafe; border-left: 3px solid #0284c7; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.background='#bfdbfe';" onmouseout="this.style.background='#dbeafe';">
-                  <div style="font-weight: 500; color: #1f2937; margin-bottom: 0.25rem;">${note.title}</div>
-                  <div style="color: #0284c7; font-size: 0.75rem; margin-bottom: 0.2rem;">${dateStr} at ${timeStr}</div>
-                  <div style="color: #6b7280; font-size: 0.7rem;">${countdownStr}</div>
-                </div>
-              `;
-            }).join('')}
-          </div>
-        </div>
-      `;
-      
-      // Add click handlers to select note from left
-      scheduledContainer.querySelectorAll('.scheduled-post-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-          const noteId = item.dataset.noteId;
-          const note = this.allNotes.find(n => n.id === noteId);
-          if (note) {
-            this.selectNote(note);
-          }
-        });
-      });
-    } else {
-      scheduledContainer.innerHTML = '';
     }
   }
 
@@ -1558,28 +1319,7 @@ class NotesWorkspace {
       return;
     }
 
-    // Check scheduling limit for free users
-    if (!window.licenseManager.canUseFeature('scheduled')) {
-      const scheduledCount = (this.allNotes || []).filter(n => n.status === 'scheduled').length;
-      if (scheduledCount >= 3) {
-        alert('Free plan limited to 3 scheduled posts. Please upgrade to Pro for unlimited scheduling.');
-        this.hideScheduleModal();
-        return;
-      }
-    }
-
     try {
-      // Check scheduled post limit for non-pro users
-      if (!window.licenseManager.canUseFeature('scheduled')) {
-        // Count existing scheduled posts
-        const scheduledCount = (this.allNotes || []).filter(n => n.status === 'scheduled').length;
-        if (scheduledCount >= 3) {
-          alert('Free plan limited to 3 scheduled posts. Please upgrade to Pro for unlimited scheduling.');
-          this.hideScheduleModal();
-          return;
-        }
-      }
-
       // Parse datetime-local string (YYYY-MM-DDTHH:mm) as LOCAL time, not UTC
       const [date, time] = datetimeStr.split('T');
       const [year, month, day] = date.split('-').map(Number);
@@ -1592,7 +1332,8 @@ class NotesWorkspace {
       
       // Save current note content with scheduled status
       this.currentNote.title = document.getElementById('note-title').value || 'Untitled Post';
-      this.currentNote.content = document.getElementById('editor-content').value;
+      const editor = document.getElementById('editor-content');
+      this.currentNote.content = editor.innerHTML || editor.value || '';
       this.currentNote.status = 'scheduled';
       this.currentNote.scheduledFor = scheduledFor;
 
@@ -1730,14 +1471,23 @@ class NotesWorkspace {
   }
 
   detectLinks(text) {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    // Match URLs with or without http/https prefix
+    // Supports: https://example.com, http://example.com, example.com, www.example.com
+    const urlRegex = /(?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9][a-zA-Z0-9-]*(?:\.[a-zA-Z]{2,})+(?:\/[^\s]*)?/g;
     const match = urlRegex.exec(text);
     
     if (!match) return { cleanText: text, url: null };
     
-    const url = match[1];
+    let url = match[0];
+    
+    // Add https:// if no protocol specified
+    if (!url.match(/^https?:\/\//)) {
+      url = 'https://' + url;
+    }
+    
     // Remove URL from text and trim extra whitespace
-    const cleanText = text.substring(0, match.index) + text.substring(match.index + url.length);
+    const originalUrl = match[0];
+    const cleanText = text.substring(0, match.index) + text.substring(match.index + originalUrl.length);
     
     return { cleanText: cleanText.trim(), url };
   }
@@ -1841,21 +1591,52 @@ class NotesWorkspace {
       return;
     }
     
-    // Show loading
-    preview.innerHTML = '<div style="color: #9ca3af; font-size: 0.85rem;">Loading preview...</div>';
+    // Check if already have a preview for this URL
+    if (this.currentNote && this.currentNote.customLinkPreview && this.currentNote.customLinkPreview.url === url) {
+      // Already have a preview, show it
+      preview.style.display = 'block';
+      return;
+    }
+    
+    // Show option to create preview (don't auto-create)
+    preview.innerHTML = `
+      <div style="padding: 0.75rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 4px; display: flex; gap: 0.5rem; align-items: center;">
+        <span style="font-size: 0.85rem; color: #1e40af;">Link detected</span>
+        <button type="button" id="editor-link-preview-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">Add Preview</button>
+      </div>
+    `;
     preview.style.display = 'block';
     
-    // Fetch OG data
-    try {
-      const ogData = await this.fetchOGData(url);
-      if (ogData) {
-        this.displayEditorLinkPreview(url, ogData, preview);
-      } else {
-        preview.innerHTML = '<div style="color: #6b7280; font-size: 0.85rem;">Could not load preview</div>';
+    // Add click handler - use setTimeout to ensure button exists
+    setTimeout(() => {
+      const btn = document.getElementById('editor-link-preview-btn');
+      if (btn) {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          preview.innerHTML = '<div style="color: #9ca3af; font-size: 0.85rem;">Loading preview...</div>';
+          
+          try {
+            // Use the BlueskyIntegration's fetchOGData if available
+            let ogData;
+            if (window.bluesky && window.bluesky.fetchOGData) {
+              ogData = await window.bluesky.fetchOGData(url);
+            } else {
+              ogData = await this.fetchOGData(url);
+            }
+            
+            if (ogData) {
+              this.displayEditorLinkPreview(url, ogData, preview);
+            } else {
+              preview.innerHTML = '<div style="color: #6b7280; font-size: 0.85rem;">Could not load preview</div>';
+            }
+          } catch (error) {
+            console.error('[Editor] Error fetching preview:', error);
+            preview.innerHTML = '<div style="color: #dc2626; font-size: 0.85rem;">Error loading preview</div>';
+          }
+        });
       }
-    } catch (error) {
-      preview.innerHTML = '<div style="color: #dc2626; font-size: 0.85rem;">Error loading preview</div>';
-    }
+    }, 0);
   }
 
   displayEditorLinkPreview(url, ogData, previewEl) {
@@ -1869,20 +1650,45 @@ class NotesWorkspace {
       image: ogData?.image
     };
 
-    // Display full preview with edit button
+    // Display full preview with edit and remove buttons
     let html = '';
     if (ogData.image) {
       html += `<img src="${ogData.image}" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem;">`;
     }
     html += `<div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; color: #333;" id="preview-title">${ogData.title || 'Link'}</div>`;
     html += `<div style="font-size: 0.8rem; color: #666; line-height: 1.3; margin-bottom: 0.5rem;" id="preview-desc">${ogData.description || url}</div>`;
-    html += `<button id="editor-link-edit-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✏️ Edit</button>`;
+    html += `<div style="display: flex; gap: 0.5rem;">`;
+    html += `<button type="button" id="editor-link-edit-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✏️ Edit</button>`;
+    html += `<button type="button" id="editor-link-remove-btn" style="padding: 0.4rem 0.8rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✕ Remove</button>`;
+    html += `</div>`;
     previewEl.innerHTML = html;
     
     // Add edit button listener
-    document.getElementById('editor-link-edit-btn').addEventListener('click', () => {
-      this.togglePreviewEdit(previewEl, ogData);
-    });
+    setTimeout(() => {
+      const editBtn = document.getElementById('editor-link-edit-btn');
+      if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!window.licenseManager.canUseFeature('advancedPreviews')) {
+            this.showMessage('Upgrade to Pro to edit link previews', 'info');
+            document.getElementById('pro-modal').classList.add('active');
+            return;
+          }
+          this.togglePreviewEdit(previewEl, ogData);
+        });
+      }
+      
+      const removeBtn = document.getElementById('editor-link-remove-btn');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.currentNote.customLinkPreview = null;
+          previewEl.style.display = 'none';
+        });
+      }
+    }, 0);
   }
 
   togglePreviewEdit(previewEl, ogData) {
@@ -1896,13 +1702,18 @@ class NotesWorkspace {
       if (this.currentNote && this.currentNote.customLinkPreview) {
         this.currentNote.customLinkPreview.title = titleInput.value;
         this.currentNote.customLinkPreview.description = descInput.value;
+        // Make sure URL is preserved
+        if (!this.currentNote.customLinkPreview.url) {
+          console.warn('[Workspace] WARNING: customLinkPreview missing URL');
+        }
       }
       
       // Persist changes to database
       this.db.saveNote(this.currentNote);
       
-      // Show preview mode again
-      this.displayEditorLinkPreview(ogData.url, this.currentNote.customLinkPreview, previewEl);
+      // Show preview mode again - use the stored URL from customLinkPreview
+      const previewUrl = this.currentNote.customLinkPreview?.url || ogData?.url;
+      this.displayEditorLinkPreview(previewUrl, this.currentNote.customLinkPreview, previewEl);
     } else {
       // Edit mode
       let html = '';
@@ -1926,189 +1737,148 @@ class NotesWorkspace {
 class NotesDBStorage {
   constructor() {
     this.storageKey = 'floatingNotes';
-    this.dbName = 'SkyPostDB';
-    this.storeName = 'notes';
-    this.db = null;
-    this.migrationDone = false;
-    console.log('[DBStorage] Constructor - using IndexedDB with migration');
   }
 
   async init() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(this.dbName, 1);
-
-      request.onerror = () => {
-        console.error('[DBStorage] ✗ Failed to open IndexedDB:', request.error);
-        reject(request.error);
-      };
-
-      request.onsuccess = async () => {
-        this.db = request.result;
-        console.log('[DBStorage] ✓ IndexedDB initialized (50MB available)');
-        
-        // Migrate data from chrome.storage.local if not already done
-        await this.migrateFromChromeStorage();
-        resolve();
-      };
-
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        if (!db.objectStoreNames.contains(this.storeName)) {
-          db.createObjectStore(this.storeName, { keyPath: 'id' });
-          console.log('[DBStorage] ✓ Created notes object store');
-        }
-      };
-    });
-  }
-
-  requestPersistentStorage() {
-    if (navigator.storage && navigator.storage.persist) {
-      navigator.storage.persist().then((persistent) => {
-        if (persistent) {
-          console.log('[DBStorage] ✓ Persistent storage granted for Pro user');
-        } else {
-          console.log('[DBStorage] Persistent storage request denied by user');
-        }
-      }).catch((error) => {
-        console.warn('[DBStorage] Persistent storage error:', error);
-      });
-    }
-  }
-
-  async migrateFromChromeStorage() {
-    if (this.migrationDone) return;
-    
-    console.log('[DBStorage] Checking for migration from chrome.storage.local...');
-    
-    return new Promise((resolve) => {
-      if (!chrome.storage || !chrome.storage.local) {
-        console.log('[DBStorage] chrome.storage not available, skipping migration');
-        this.migrationDone = true;
-        resolve();
-        return;
-      }
-
-      chrome.storage.local.get([this.storageKey], async (result) => {
-        if (chrome.runtime.lastError) {
-          console.warn('[DBStorage] chrome.storage error during migration');
-          this.migrationDone = true;
-          resolve();
-          return;
-        }
-
-        const oldNotes = result[this.storageKey] || [];
-        
-        if (oldNotes.length === 0) {
-          console.log('[DBStorage] No old notes to migrate');
-          this.migrationDone = true;
-          resolve();
-          return;
-        }
-
-        console.log('[DBStorage] Migrating', oldNotes.length, 'notes from chrome.storage.local to IndexedDB...');
-        
-        // Migrate each note to IndexedDB
-        for (const note of oldNotes) {
-          await this.saveNote(note);
-        }
-
-        console.log('[DBStorage] ✓ Migration complete! All notes moved to IndexedDB');
-        this.migrationDone = true;
-        resolve();
-      });
-    });
+    return Promise.resolve();
   }
 
   async saveNote(note) {
-    // Don't save empty draft posts
-    if (note.status === 'draft' && (!note.content || note.content.trim() === '')) {
-      console.log('[DBStorage] Skipping save - empty draft post');
-      return Promise.resolve();
-    }
-    
-    if (!this.db) await this.init();
     
     return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.put(note);
+      // Try chrome.storage first
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get([this.storageKey], (result) => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Storage] chrome.storage error, falling back to localStorage');
+            this.saveToLocalStorage(note);
+            resolve();
+            return;
+          }
 
-      request.onerror = () => {
-        console.error('[DBStorage] ✗ Failed to save note:', request.error);
-        reject(request.error);
-      };
+          const notes = result[this.storageKey] || [];
+          const index = notes.findIndex(n => n.id === note.id);
+          
+          if (index >= 0) {
+            notes[index] = note;
+          } else {
+            notes.push(note);
+          }
 
-      request.onsuccess = () => {
-        console.log('[DBStorage] ✓ Saved note:', note.id, note.title);
+          chrome.storage.local.set({ [this.storageKey]: notes }, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('[Storage] chrome.storage.set failed, falling back to localStorage');
+              this.saveToLocalStorage(note);
+            } else {
+              // Also sync to chrome.storage.sync for background worker scheduling
+              if (chrome.storage.sync) {
+                chrome.storage.sync.set({ floatingNotes: notes }, () => {
+                  if (!chrome.runtime.lastError) {
+                    console.log('[Storage] ✓ Synced', notes.length, 'notes to chrome.storage.sync');
+                  }
+                });
+              }
+            }
+            resolve();
+          });
+        });
+      } else {
+        console.warn('[Storage] chrome.storage not available, using localStorage');
+        this.saveToLocalStorage(note);
         resolve();
-      };
+      }
     });
+  }
+
+  saveToLocalStorage(note) {
+    try {
+      const notes = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+      const index = notes.findIndex(n => n.id === note.id);
+      if (index >= 0) {
+        notes[index] = note;
+      } else {
+        notes.push(note);
+      }
+      localStorage.setItem(this.storageKey, JSON.stringify(notes));
+    } catch (error) {
+      console.error('[Storage] localStorage error:', error);
+    }
   }
 
   async getAllNotes() {
-    if (!this.db) await this.init();
-
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readonly');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.getAll();
-
-      request.onerror = () => {
-        console.error('[DBStorage] ✗ Failed to get all notes:', request.error);
-        reject(request.error);
-      };
-
-      request.onsuccess = () => {
-        const notes = request.result;
-        // Filter out blank/corrupt notes: exclude drafts with no content
-        const blankIds = [];
-        const validNotes = notes.filter(n => {
-          if (!n) return false;
-          // Collect blank draft posts to delete
-          if (n.status === 'draft' && (!n.content || n.content.trim() === '')) {
-            blankIds.push(n.id);
-            return false;
+    
+    return new Promise((resolve) => {
+      // Try chrome.storage first
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get([this.storageKey], (result) => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Storage] chrome.storage error, falling back to localStorage');
+            const notes = this.getFromLocalStorage();
+            resolve(notes);
+            return;
           }
-          return true;
+
+          const notes = result[this.storageKey] || [];
+          resolve(notes);
         });
-        
-        // Delete blank drafts from database
-        if (blankIds.length > 0) {
-          console.warn('[DBStorage] ⚠ Deleting', blankIds.length, 'blank/corrupt notes');
-          const deleteTransaction = this.db.transaction([this.storeName], 'readwrite');
-          const deleteStore = deleteTransaction.objectStore(this.storeName);
-          blankIds.forEach(id => {
-            deleteStore.delete(id);
-          });
-        }
-        
-        if (validNotes.length < notes.length) {
-          console.warn('[DBStorage] ⚠ Filtered out', notes.length - validNotes.length, 'blank/corrupt notes');
-        }
-        console.log('[DBStorage] ✓ getAllNotes returned', validNotes.length, 'valid notes (filtered from', notes.length, 'total)');
-        resolve(validNotes);
-      };
+      } else {
+        console.warn('[Storage] chrome.storage not available, using localStorage');
+        const notes = this.getFromLocalStorage();
+        resolve(notes);
+      }
     });
   }
 
+  getFromLocalStorage() {
+    try {
+      const notes = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+      return notes;
+    } catch (error) {
+      console.error('[Storage] localStorage error:', error);
+      return [];
+    }
+  }
+
   async deleteNote(id) {
-    if (!this.db) await this.init();
+    return new Promise((resolve) => {
+      // Try chrome.storage first
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get([this.storageKey], (result) => {
+          if (chrome.runtime.lastError) {
+            console.warn('[Storage] chrome.storage error, falling back to localStorage');
+            this.deleteFromLocalStorage(id);
+            resolve();
+            return;
+          }
 
-    return new Promise((resolve, reject) => {
-      const transaction = this.db.transaction([this.storeName], 'readwrite');
-      const store = transaction.objectStore(this.storeName);
-      const request = store.delete(id);
-
-      request.onerror = () => {
-        console.error('[DBStorage] ✗ Failed to delete note:', request.error);
-        reject(request.error);
-      };
-
-      request.onsuccess = () => {
-        console.log('[DBStorage] ✓ Deleted note:', id);
+          const notes = result[this.storageKey] || [];
+          const filtered = notes.filter(n => n.id !== id);
+          
+          chrome.storage.local.set({ [this.storageKey]: filtered }, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('[Storage] chrome.storage.set failed, falling back to localStorage');
+              this.deleteFromLocalStorage(id);
+            } else {
+            }
+            resolve();
+          });
+        });
+      } else {
+        console.warn('[Storage] chrome.storage not available, using localStorage');
+        this.deleteFromLocalStorage(id);
         resolve();
-      };
+      }
     });
+  }
+
+  deleteFromLocalStorage(id) {
+    try {
+      const notes = JSON.parse(localStorage.getItem(this.storageKey) || '[]');
+      const filtered = notes.filter(n => n.id !== id);
+      localStorage.setItem(this.storageKey, JSON.stringify(filtered));
+    } catch (error) {
+      console.error('[Storage] localStorage error:', error);
+    }
   }
 }
 
@@ -2201,7 +1971,9 @@ class BlueskyIntegration {
     if (logoutBtn) {
       logoutBtn.addEventListener('click', () => {
         if (confirm('Logout from Bluesky?')) {
-          this.clearSession();
+          chrome.storage.local.remove('blueskySession');
+          this.session = null;
+          this.updateUI();
         }
       });
     }
@@ -2214,64 +1986,35 @@ class BlueskyIntegration {
         if (preview) preview.style.display = 'none';
       });
     }
-  }
 
-  // Clear Bluesky session (used by logout and account deletion)
-  clearSession() {
-    return new Promise((resolve) => {
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.remove('blueskySession', () => {
-          this.session = null;
-          // Also clear from localStorage as fallback
-          try {
-            localStorage.removeItem('blueskySession');
-          } catch (error) {
-            console.warn('[Bluesky] localStorage clear error:', error);
-          }
-          this.updateUI();
-          resolve();
-        });
-      } else {
-        try {
-          localStorage.removeItem('blueskySession');
-        } catch (error) {
-          console.warn('[Bluesky] localStorage clear error:', error);
-        }
-        this.session = null;
-        this.updateUI();
-        resolve();
-      }
-    });
-
-  }
-
-  setupLinkPreviewHandlers() {
-    const linkEditBtn = document.getElementById('link-preview-edit-btn');
-    if (linkEditBtn) {
-      linkEditBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (!window.licenseManager.canUseFeature('advancedPreviews')) {
-          this.showMessage('Upgrade to Pro to edit link previews', 'info');
-          document.getElementById('pro-modal').classList.add('active');
-          return;
-        }
-        this.openLinkPreviewModal();
-      });
-    }
-
+    // Link preview modal handlers (Pro feature)
     const linkSaveBtn = document.getElementById('link-preview-save-btn');
+    const linkCancelBtn = document.getElementById('link-preview-cancel-btn');
+    const linkModal = document.getElementById('link-preview-modal');
+
     if (linkSaveBtn) {
-      linkSaveBtn.addEventListener('click', async (e) => {
-        e.preventDefault();
-        await this.saveLinkPreview();
+      linkSaveBtn.addEventListener('click', () => this.saveLinkPreview());
+    }
+
+    if (linkCancelBtn) {
+      linkCancelBtn.addEventListener('click', () => {
+        if (linkModal) linkModal.style.display = 'none';
       });
     }
 
-    const linkCancelBtn = document.getElementById('link-preview-cancel-btn');
-    if (linkCancelBtn) {
-      linkCancelBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        document.getElementById('link-preview-modal').style.display = 'none';
+    if (linkModal) {
+      linkModal.addEventListener('click', (e) => {
+        // Only close if clicking the exact background, not the modal content
+        if (e.target === linkModal) {
+          linkModal.style.display = 'none';
+        }
+      });
+      
+      // Close on Escape key
+      linkModal.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          linkModal.style.display = 'none';
+        }
       });
     }
   }
@@ -2288,7 +2031,6 @@ class BlueskyIntegration {
       document.getElementById('bsky-handle').textContent = `@${this.session.handle}`;
       document.getElementById('bsky-textarea').value = '';
       document.getElementById('bsky-char-count').textContent = '0';
-      this.setupLinkPreviewHandlers();
     } else {
       loginContainer.style.display = 'block';
       composerContainer.style.display = 'none';
@@ -2324,6 +2066,8 @@ class BlueskyIntegration {
       // Save to both chrome.storage and localStorage
       try {
         chrome.storage.local.set({ blueskySession: sessionData });
+        // Also sync to chrome.storage.sync for background worker to access when posting
+        chrome.storage.sync.set({ blueskySession: sessionData });
       } catch (error) {
         console.warn('[Bluesky] chrome.storage failed:', error);
       }
@@ -2344,14 +2088,23 @@ class BlueskyIntegration {
   }
 
   detectLinks(text) {
-    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    // Match URLs with or without http/https prefix
+    // Supports: https://example.com, http://example.com, example.com, www.example.com
+    const urlRegex = /(?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9][a-zA-Z0-9-]*(?:\.[a-zA-Z]{2,})+(?:\/[^\s]*)?/g;
     const match = urlRegex.exec(text);
     
     if (!match) return { cleanText: text, url: null };
     
-    const url = match[1];
+    let url = match[0];
+    
+    // Add https:// if no protocol specified
+    if (!url.match(/^https?:\/\//)) {
+      url = 'https://' + url;
+    }
+    
     // Remove URL from text and trim extra whitespace
-    const cleanText = text.substring(0, match.index) + text.substring(match.index + url.length);
+    const originalUrl = match[0];
+    const cleanText = text.substring(0, match.index) + text.substring(match.index + originalUrl.length);
     
     return { cleanText: cleanText.trim(), url };
   }
@@ -2492,13 +2245,17 @@ class BlueskyIntegration {
     
     this.pendingLinkUrl = url;
     
-    // Display preview
+    // Display preview with Edit and Remove buttons
     let html = '';
     if (ogData?.image) {
       html += `<img id="link-preview-thumb" src="${ogData.image}" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem;">`;
     }
     html += `<div id="link-preview-title" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; color: #333;">${ogData?.title || 'Link'}</div>`;
-    html += `<div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3;">${ogData?.description || url}</div>`;
+    html += `<div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3; margin-bottom: 0.5rem;">${ogData?.description || url}</div>`;
+    html += `<div style="display: flex; gap: 0.5rem;">`;
+    html += `<button type="button" id="bsky-link-edit-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✏️ Edit</button>`;
+    html += `<button type="button" id="bsky-link-remove-btn" style="padding: 0.4rem 0.8rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✕ Remove</button>`;
+    html += `</div>`;
     
     display.innerHTML = html;
     preview.style.display = 'block';
@@ -2510,6 +2267,39 @@ class BlueskyIntegration {
       description: ogData?.description || '',
       image: ogData?.image
     };
+    
+    // Add event listeners with setTimeout to ensure elements exist
+    setTimeout(() => {
+      const editBtn = document.getElementById('bsky-link-edit-btn');
+      const removeBtn = document.getElementById('bsky-link-remove-btn');
+      
+      if (editBtn) {
+        editBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (!window.licenseManager.canUseFeature('advancedPreviews')) {
+            this.showMessage('Upgrade to Pro to edit link previews', 'info');
+            document.getElementById('pro-modal').classList.add('active');
+            return;
+          }
+          this.openLinkPreviewModal(url, this.customLinkPreview);
+        });
+      }
+      
+      if (removeBtn) {
+        removeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          this.customLinkPreview = null;
+          if (preview) preview.style.display = 'none';
+        });
+      }
+    }, 0);
+  }
+
+  showLinkPreviewFromDetected(url, ogData) {
+    // Same as showLinkPreview but used from link detection
+    this.showLinkPreview(url, ogData);
   }
 
   // Generic version for different preview elements
@@ -2533,6 +2323,7 @@ class BlueskyIntegration {
   async detectAndShowLinkPreview(text) {
     const { url } = this.detectLinks(text);
     const preview = document.getElementById('bsky-link-preview');
+    const display = document.getElementById('link-preview-display');
     
     if (!url) {
       if (preview) preview.style.display = 'none';
@@ -2540,15 +2331,46 @@ class BlueskyIntegration {
       return;
     }
     
-    // Fetch OG data
-    try {
-      const ogData = await this.fetchOGData(url);
-      if (ogData) {
-        this.showLinkPreview(url, ogData);
-      }
-    } catch (error) {
-      console.error('[Link] Failed to fetch preview:', error);
+    // Check if already have a preview for this URL
+    if (this.customLinkPreview && this.customLinkPreview.url === url) {
+      // Already have a preview, show it
+      if (preview) preview.style.display = 'block';
+      return;
     }
+    
+    // Show option to create preview (don't auto-create)
+    const html = `
+      <div style="padding: 0.75rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 4px; display: flex; gap: 0.5rem; align-items: center;">
+        <span style="font-size: 0.85rem; color: #1e40af;">Link detected</span>
+        <button type="button" id="bsky-link-preview-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">Add Preview</button>
+      </div>
+    `;
+    
+    if (display) display.innerHTML = html;
+    if (preview) preview.style.display = 'block';
+    
+    // Add click handler for preview button
+    setTimeout(() => {
+      const btn = document.getElementById('bsky-link-preview-btn');
+      if (btn) {
+        btn.addEventListener('click', async (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          if (display) display.innerHTML = '<div style="color: #9ca3af; font-size: 0.85rem;">Loading preview...</div>';
+          
+          try {
+            const ogData = await this.fetchOGData(url);
+            if (ogData) {
+              this.showLinkPreviewFromDetected(url, ogData);
+            } else {
+              if (display) display.innerHTML = '<div style="color: #6b7280; font-size: 0.85rem;">Could not load preview</div>';
+            }
+          } catch (error) {
+            if (display) display.innerHTML = '<div style="color: #dc2626; font-size: 0.85rem;">Error loading preview</div>';
+          }
+        });
+      }
+    }, 0);
   }
 
   openLinkPreviewModal(url = null, initialPreview = null) {
@@ -2582,6 +2404,15 @@ class BlueskyIntegration {
     }
     if (context.preview && context.preview.image) {
       preview.image = context.preview.image;
+    }
+    
+    // Check if there's already a different image embed (only warn if adding another embed)
+    const editor = document.getElementById('editor-content');
+    const hasImage = editor && editor.innerHTML && editor.innerHTML.includes('<img');
+    
+    if (hasImage) {
+      const confirmed = confirm('This post already has an image embed. Bluesky only allows one embed per post.\n\nWould you like to replace the image with this link preview?');
+      if (!confirmed) return;
     }
     
     if (context.isScheduled && this.currentNote) {
@@ -2622,7 +2453,6 @@ class BlueskyIntegration {
     
     if (!window.licenseManager.canUseFeature('advancedPreviews')) {
       this.showMessage('Upgrade to Pro to edit link previews', 'info');
-      window.renderProModal();
       document.getElementById('pro-modal').classList.add('active');
       return;
     }
@@ -2726,37 +2556,40 @@ class BlueskyIntegration {
   uploadImageFromDataUrl(dataUrl) {
     return new Promise((resolve, reject) => {
       try {
-        // Convert data URL to blob
-        fetch(dataUrl)
-          .then(res => res.blob())
-          .then(blob => {
-            
-            // Upload to Bluesky
-            fetch(`${this.pdsUrl}/xrpc/com.atproto.repo.uploadBlob`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${this.session.accessJwt}`,
-                'Content-Type': blob.type || 'image/png'
-              },
-              body: blob
-            }).then(response => {
-              if (!response.ok) {
-                return response.json().then(error => {
-                  throw new Error(error.message || 'Upload failed');
-                });
-              }
-              return response.json();
-            }).then(data => {
-              resolve(data.blob);
-            }).catch(error => {
-              console.error('[Post] Upload error:', error);
-              reject(error);
+        // Convert data URL directly to blob without fetch (avoids CSP issues)
+        const arr = dataUrl.split(',');
+        const mime = arr[0].match(/:(.*?);/)[1];
+        const bstr = atob(arr[1]);
+        const n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        
+        for (let i = 0; i < n; i++) {
+          u8arr[i] = bstr.charCodeAt(i);
+        }
+        
+        const blob = new Blob([u8arr], { type: mime });
+        
+        // Upload to Bluesky
+        fetch(`${this.pdsUrl}/xrpc/com.atproto.repo.uploadBlob`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.session.accessJwt}`,
+            'Content-Type': blob.type || 'image/png'
+          },
+          body: blob
+        }).then(response => {
+          if (!response.ok) {
+            return response.json().then(error => {
+              throw new Error(error.message || 'Upload failed');
             });
-          })
-          .catch(error => {
-            console.error('[Post] Blob creation error:', error);
-            reject(error);
-          });
+          }
+          return response.json();
+        }).then(data => {
+          resolve(data.blob);
+        }).catch(error => {
+          console.error('[Post] Upload error:', error);
+          reject(error);
+        });
       } catch (error) {
         console.error('[Post] DataURL conversion error:', error);
         reject(error);
@@ -2789,7 +2622,10 @@ class BlueskyIntegration {
           // Save the refreshed session
           await new Promise((resolve) => {
             chrome.storage.local.set({ 'blueskySession': this.session }, () => {
-              resolve();
+              // Also sync to chrome.storage.sync for background worker
+              chrome.storage.sync.set({ 'blueskySession': this.session }, () => {
+                resolve();
+              });
             });
           });
         } else {
@@ -2862,7 +2698,7 @@ class BlueskyIntegration {
     }, 3000);
   }
 
-  sendToComposer(text, imageData = null) {
+  sendToComposer(text, imageData = null, customLinkPreview = null) {
     if (!this.session) {
       this.showMessage('❌ Please login first', 'error');
       return;
@@ -2870,6 +2706,57 @@ class BlueskyIntegration {
     const textarea = document.getElementById('bsky-textarea');
     textarea.value = text;
     textarea.dispatchEvent(new Event('input'));
+    
+    // Store custom link preview if provided
+    if (customLinkPreview) {
+      this.customLinkPreview = customLinkPreview;
+      // Display the preview
+      const preview = document.getElementById('bsky-link-preview');
+      const display = document.getElementById('link-preview-display');
+      if (preview && display) {
+        let html = '';
+        if (customLinkPreview.image) {
+          html += `<img id="link-preview-thumb" src="${customLinkPreview.image}" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem;">`;
+        }
+        html += `<div id="link-preview-title" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; color: #333;">${customLinkPreview.title || 'Link'}</div>`;
+        html += `<div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3; margin-bottom: 0.5rem;">${customLinkPreview.description || customLinkPreview.url}</div>`;
+        html += `<div style="display: flex; gap: 0.5rem;">`;
+        html += `<button type="button" id="bsky-link-edit-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✏️ Edit</button>`;
+        html += `<button type="button" id="bsky-link-remove-btn" style="padding: 0.4rem 0.8rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✕ Remove</button>`;
+        html += `</div>`;
+        
+        display.innerHTML = html;
+        preview.style.display = 'block';
+        
+        // Add event listeners
+        setTimeout(() => {
+          const editBtn = document.getElementById('bsky-link-edit-btn');
+          const removeBtn = document.getElementById('bsky-link-remove-btn');
+          
+          if (editBtn) {
+            editBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (!window.licenseManager.canUseFeature('advancedPreviews')) {
+                this.showMessage('Upgrade to Pro to edit link previews', 'info');
+                document.getElementById('pro-modal').classList.add('active');
+                return;
+              }
+              this.openLinkPreviewModal(customLinkPreview.url, this.customLinkPreview);
+            });
+          }
+          
+          if (removeBtn) {
+            removeBtn.addEventListener('click', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              this.customLinkPreview = null;
+              preview.style.display = 'none';
+            });
+          }
+        }, 0);
+      }
+    }
     
     // If image data is provided, show image preview in Bluesky
     if (imageData) {
