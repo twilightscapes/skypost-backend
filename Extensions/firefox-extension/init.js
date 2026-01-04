@@ -15,8 +15,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     await window.licenseManager.loadLicense();
     
     // Create workspace and initialize it (db, notes, ui)
-    window.workspace = new NotesWorkspace();
-    await window.workspace.init();
+    // window.workspace is now assigned in NotesWorkspace constructor
+    const workspace = new NotesWorkspace();
+    await workspace.init();
     
     // Create Bluesky integration instance
     if (typeof BlueskyIntegration !== 'undefined') {
@@ -41,8 +42,9 @@ if (document.readyState !== 'loading') {
   if (typeof NotesWorkspace !== 'undefined') {
     window.licenseManager = new LicenseManager();
     window.licenseManager.loadLicense().then(async () => {
-      window.workspace = new NotesWorkspace();
-      await window.workspace.init();
+      // window.workspace is now assigned in NotesWorkspace constructor
+      const workspace = new NotesWorkspace();
+      await workspace.init();
       
       // Create Bluesky integration instance
       if (typeof BlueskyIntegration !== 'undefined') {

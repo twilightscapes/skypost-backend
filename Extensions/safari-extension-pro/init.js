@@ -13,8 +13,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (typeof NotesWorkspace !== 'undefined') {
     window.licenseManager = new LicenseManager();
     await window.licenseManager.loadLicense();
-    window.workspace = new NotesWorkspace();
-    await window.workspace.init();
+    // window.workspace is now assigned in NotesWorkspace constructor
+    const workspace = new NotesWorkspace();
+    await workspace.init();
     
     // Create Bluesky integration instance
     if (typeof BlueskyIntegration !== 'undefined') {
@@ -40,7 +41,8 @@ if (document.readyState !== 'loading') {
     window.licenseManager = new LicenseManager();
     window.licenseManager.loadLicense().then(() => {
       console.log('[Init] License loaded in fallback');
-      window.workspace = new NotesWorkspace();
+      // window.workspace is now assigned in NotesWorkspace constructor
+      const workspace = new NotesWorkspace();
       console.log('[Init] Workspace created in fallback');
       
       // Create Bluesky integration instance

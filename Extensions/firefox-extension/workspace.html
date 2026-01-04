@@ -1077,8 +1077,31 @@
       flex: 1;
       display: flex;
       flex-direction: column;
+      overflow: hidden;
+      padding: 0;
+      position: relative;
+    }
+
+    #posts-tab-content,
+    #timeline-tab-content,
+    #calendar-tab-content,
+    #analytics-tab-content,
+    #lists-tab-content {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
       overflow-y: auto;
       padding: 1rem;
+      box-sizing: border-box;
+      display: none;
+      flex-direction: column;
+    }
+
+    /* Posts tab shows by default as flex column */
+    #posts-tab-content {
+      display: flex;
     }
 
     .bluesky-login-form {
@@ -1656,6 +1679,7 @@
       </div>
       <div style="display: flex; gap: 0; border-bottom: 2px solid #e5e7eb; background: white; padding: 0;">
         <button id="tab-posts" class="bluesky-tab active" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; margin-bottom: -2px;">Posts</button>
+        <button id="tab-timeline" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; margin-bottom: -2px;">Timeline</button>
         <button id="tab-calendar" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; margin-bottom: -2px;">Calendar</button>
         <button id="tab-analytics" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; margin-bottom: -2px;">Analytics (Pro)</button>
         <button id="tab-lists" class="bluesky-tab" style="flex: 1; padding: 0.75rem; border: none; background: transparent; cursor: pointer; font-weight: 500; margin-bottom: -2px;">Lists</button>
@@ -1741,6 +1765,15 @@
             
             <!-- Failed posts -->
             <div id="failed-posts-container"></div>
+          </div>
+        </div>
+
+        <!-- Timeline Tab -->
+        <div id="timeline-tab-content" style="display: none; overflow-y: auto; padding: 1rem;">
+          <div id="timeline-loading" style="text-align: center; padding: 2rem; color: #999;">Loading timeline...</div>
+          <div id="timeline-view" style="display: none;"></div>
+          <div id="timeline-empty" style="display: none; text-align: center; padding: 2rem; color: #999;">
+            <p>No posts yet. Start posting to see them here!</p>
           </div>
         </div>
 

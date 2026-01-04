@@ -268,18 +268,31 @@ async function checkAndPostScheduledNotes() {
 async function postScheduledNote(note) {
   try {
     
-    // Get Bluesky session
-    const sessionResult = await new Promise((resolve, reject) => {
-      chrome.storage.sync.get(['blueskySession'], (result) => {
-        if (chrome.runtime.lastError) {
-          reject(chrome.runtime.lastError);
-        } else {
-          resolve(result);
-        }
+    // Get Bluesky session from both storage.local and storage.sync (fallback)
+    let session = null;
+    
+    // Try chrome.storage.local first (Firefox)
+    const localResult = await new Promise((resolve) => {
+      chrome.storage.local.get(['blueskySession'], (result) => {
+        resolve(result);
       });
     });
-
-    let session = sessionResult['blueskySession'];
+    
+    if (localResult?.blueskySession) {
+      session = localResult.blueskySession;
+      console.log('[Background] Found session in chrome.storage.local');
+    } else {
+      // Fallback to chrome.storage.sync
+      const syncResult = await new Promise((resolve) => {
+        chrome.storage.sync.get(['blueskySession'], (result) => {
+          resolve(result);
+        });
+      });
+      if (syncResult?.blueskySession) {
+        session = syncResult.blueskySession;
+        console.log('[Background] Found session in chrome.storage.sync');
+      }
+    }
     
     if (!session || !session.accessJwt) {
       console.error('[Background] BLOCKING: No Bluesky session available');
@@ -459,9 +472,25 @@ async function postScheduledNote(note) {
     });
 
     if (postResponse.ok) {
+      const responseData = await postResponse.json();
+      console.log('[Background] Response received:', responseData);
+      
       note.status = 'published';
       const timestamp = Date.now();
       note.postedAt = timestamp;
+      
+      // Save the post URI from the API response
+      if (responseData.uri) {
+        note.postUri = responseData.uri;
+        console.log('[Background] ✓ Post successful, saved URI:', responseData.uri);
+      } else if (responseData.value && responseData.value.uri) {
+        note.postUri = responseData.value.uri;
+        console.log('[Background] ✓ Post successful, saved URI from value:', responseData.value.uri);
+      } else {
+        console.warn('[Background] ⚠️  No URI found in response:', Object.keys(responseData));
+      }
+      
+      console.log('[Background] Note after URI assignment:', {id: note.id, postUri: note.postUri, status: note.status});
       
       // Initialize postHistory if it doesn't exist
       if (!note.postHistory) {

@@ -20,14 +20,36 @@ class NotesWorkspace {
       this.backupManager = new BackupManager();
     }
     
+    // Assign to window so it's available during init() and event listener setup
+    window.workspace = this;
+    
     this.init();
   }
 
   async init() {
     try {
       
-      // Load notes from storage
-      this.allNotes = await this.db.getAllNotes();
+      // Load notes from IndexedDB
+      let dbNotes = await this.db.getAllNotes();
+      
+      // Also load from chrome.storage.sync to ensure we have all notes (including newly created ones)
+      let storageNotes = await new Promise(resolve => {
+        chrome.storage.sync.get(['floatingNotes'], (result) => {
+          resolve(result.floatingNotes || []);
+        });
+      });
+      
+      // Merge both sources - keep notes from storage as primary, add any missing from db
+      this.allNotes = Array.isArray(storageNotes) ? [...storageNotes] : [];
+      if (Array.isArray(dbNotes)) {
+        for (const dbNote of dbNotes) {
+          if (!this.allNotes.find(n => n.id === dbNote.id)) {
+            this.allNotes.push(dbNote);
+          }
+        }
+      }
+      
+      console.log('[Workspace Init] Loaded', dbNotes.length, 'from IndexedDB,', storageNotes.length, 'from storage.sync, merged to', this.allNotes.length);
 
       // Set up UI
       this.setupEventListeners();
@@ -113,17 +135,39 @@ class NotesWorkspace {
           });
           return true;
         } else if (message && message.action === 'updateScheduledNote') {
-          console.log('[Workspace] Handling updateScheduledNote:', message.note?.id, message.note?.status);
+          console.log('[Workspace] Handling updateScheduledNote:', message.note?.id, 'status:', message.note?.status, 'postUri:', message.note?.postUri);
           // Background worker updated a note status - refresh the UI
           if (this.db && message.note) {
-            // Save the updated note from background worker to ensure IndexedDB is in sync
+            // Save the updated note from background worker to ensure both storages are in sync
             this.db.saveNote(message.note).then(() => {
-              return this.db.getAllNotes();
+              // Also sync to chrome.storage.sync to keep both in sync
+              return new Promise((resolve) => {
+                chrome.storage.sync.get(['floatingNotes'], (result) => {
+                  let notes = result.floatingNotes || [];
+                  if (!Array.isArray(notes)) notes = [];
+                  // Update or add the note
+                  const existingIndex = notes.findIndex(n => n.id === message.note.id);
+                  if (existingIndex >= 0) {
+                    notes[existingIndex] = message.note;
+                  } else {
+                    notes.push(message.note);
+                  }
+                  chrome.storage.sync.set({ 'floatingNotes': notes }, () => {
+                    resolve(notes);
+                  });
+                });
+              });
             }).then(notes => {
               this.allNotes = notes;
-              console.log('[Workspace] ✓ Updated IndexedDB, refreshing UI');
+              console.log('[Workspace] ✓ Updated both storages with note:', notes.find(n => n.id === message.note.id));
               // Refresh the notes list to show updated status
               this.renderNotesList();
+              // If timeline is currently visible, re-render it to show the new postUri link
+              const timelineContent = document.getElementById('timeline-view');
+              if (timelineContent && timelineContent.style.display !== 'none') {
+                console.log('[Workspace] Timeline visible, re-rendering with updated postUri');
+                this.renderTimeline();
+              }
               // If current note was updated, refresh its display too
               if (this.currentNote && this.currentNote.id === message.note.id) {
                 const updated = notes.find(n => n.id === message.note.id);
@@ -152,6 +196,8 @@ class NotesWorkspace {
     // Only set up once
     if (this._eventListenersSetUp) return;
     this._eventListenersSetUp = true;
+    
+    console.log('[Workspace] setupEventListeners called');
 
     // Close button
     document.getElementById('close-workspace').addEventListener('click', () => {
@@ -227,11 +273,13 @@ class NotesWorkspace {
 
     // Tab switching for Posts/Calendar/Analytics
     document.getElementById('tab-posts').addEventListener('click', () => {
-      document.getElementById('posts-tab-content').style.display = 'block';
+      document.getElementById('posts-tab-content').style.display = 'flex';
+      document.getElementById('timeline-tab-content').style.display = 'none';
       document.getElementById('calendar-tab-content').style.display = 'none';
       document.getElementById('analytics-tab-content').style.display = 'none';
       document.getElementById('lists-tab-content').style.display = 'none';
       document.getElementById('tab-posts').classList.add('active');
+      document.getElementById('tab-timeline').classList.remove('active');
       document.getElementById('tab-calendar').classList.remove('active');
       document.getElementById('tab-analytics').classList.remove('active');
       document.getElementById('tab-lists').classList.remove('active');
@@ -239,10 +287,12 @@ class NotesWorkspace {
 
     document.getElementById('tab-calendar').addEventListener('click', () => {
       document.getElementById('posts-tab-content').style.display = 'none';
-      document.getElementById('calendar-tab-content').style.display = 'block';
+      document.getElementById('timeline-tab-content').style.display = 'none';
+      document.getElementById('calendar-tab-content').style.display = 'flex';
       document.getElementById('analytics-tab-content').style.display = 'none';
       document.getElementById('lists-tab-content').style.display = 'none';
       document.getElementById('tab-posts').classList.remove('active');
+      document.getElementById('tab-timeline').classList.remove('active');
       document.getElementById('tab-calendar').classList.add('active');
       document.getElementById('tab-analytics').classList.remove('active');
       document.getElementById('tab-lists').classList.remove('active');
@@ -358,8 +408,8 @@ class NotesWorkspace {
             const note = self.allNotes.find(n => n.id === noteId);
             if (note) {
               // Switch to posts tab
-              document.getElementById('posts-tab-content').style.display = 'block';
-              document.getElementById('calendar-tab-content').style.display = 'none';
+              document.getElementById('posts-tab-content').classList.add('active');
+              document.getElementById('calendar-tab-content').classList.remove('active');
               document.getElementById('tab-posts').classList.add('active');
               document.getElementById('tab-calendar').classList.remove('active');
               // Select the note
@@ -418,10 +468,12 @@ class NotesWorkspace {
       }
 
       document.getElementById('posts-tab-content').style.display = 'none';
+      document.getElementById('timeline-tab-content').style.display = 'none';
       document.getElementById('calendar-tab-content').style.display = 'none';
-      document.getElementById('analytics-tab-content').style.display = 'block';
+      document.getElementById('analytics-tab-content').style.display = 'flex';
       document.getElementById('lists-tab-content').style.display = 'none';
       document.getElementById('tab-posts').classList.remove('active');
+      document.getElementById('tab-timeline').classList.remove('active');
       document.getElementById('tab-calendar').classList.remove('active');
       document.getElementById('tab-analytics').classList.add('active');
       document.getElementById('tab-lists').classList.remove('active');
@@ -435,10 +487,12 @@ class NotesWorkspace {
     // Lists tab handler
     document.getElementById('tab-lists').addEventListener('click', () => {
       document.getElementById('posts-tab-content').style.display = 'none';
+      document.getElementById('timeline-tab-content').style.display = 'none';
       document.getElementById('calendar-tab-content').style.display = 'none';
       document.getElementById('analytics-tab-content').style.display = 'none';
-      document.getElementById('lists-tab-content').style.display = 'block';
+      document.getElementById('lists-tab-content').style.display = 'flex';
       document.getElementById('tab-posts').classList.remove('active');
+      document.getElementById('tab-timeline').classList.remove('active');
       document.getElementById('tab-calendar').classList.remove('active');
       document.getElementById('tab-analytics').classList.remove('active');
       document.getElementById('tab-lists').classList.add('active');
@@ -448,6 +502,49 @@ class NotesWorkspace {
         window.workspace.renderLists();
       }
     });
+
+    // Timeline tab handler
+    const timelineTabEl = document.getElementById('tab-timeline');
+    console.log('[Workspace] Timeline tab element found:', !!timelineTabEl);
+    
+    if (!timelineTabEl) {
+      console.error('[Workspace] CRITICAL: tab-timeline element not found in DOM!');
+    } else {
+      timelineTabEl.addEventListener('click', () => {
+        console.log('[Tab Click] Timeline tab clicked');
+        console.log('[Tab Click] window.workspace type:', typeof window.workspace);
+        console.log('[Tab Click] window.workspace value:', window.workspace);
+        console.log('[Tab Click] this:', this);
+        console.log('[Tab Click] this.renderTimeline type:', typeof this.renderTimeline);
+        
+        document.getElementById('posts-tab-content').style.display = 'none';
+        document.getElementById('timeline-tab-content').style.display = 'flex';
+        document.getElementById('calendar-tab-content').style.display = 'none';
+        document.getElementById('analytics-tab-content').style.display = 'none';
+        document.getElementById('lists-tab-content').style.display = 'none';
+        document.getElementById('tab-posts').classList.remove('active');
+        document.getElementById('tab-timeline').classList.add('active');
+        document.getElementById('tab-calendar').classList.remove('active');
+        document.getElementById('tab-analytics').classList.remove('active');
+        document.getElementById('tab-lists').classList.remove('active');
+        
+        // Render timeline on workspace instance - use this since window.workspace may not exist yet
+        if (typeof this.renderTimeline === 'function') {
+          console.log('[Tab Click] Calling renderTimeline() via this');
+          this.renderTimeline();
+        } else if (window.workspace && typeof window.workspace.renderTimeline === 'function') {
+          console.log('[Tab Click] Calling renderTimeline() via window.workspace');
+          window.workspace.renderTimeline();
+        } else {
+          console.error('[Tab Click] renderTimeline not found!', {
+            this_type: typeof this,
+            this_renderTimeline: typeof this.renderTimeline,
+            window_workspace_type: typeof window.workspace,
+            window_workspace_renderTimeline: window.workspace ? typeof window.workspace.renderTimeline : 'n/a'
+          });
+        }
+      });
+    }
 
     document.getElementById('btn-image').addEventListener('click', (e) => {
       e.preventDefault();
@@ -877,6 +974,24 @@ class NotesWorkspace {
     console.log('[Workspace] Saving note with customLinkPreview:', this.currentNote.customLinkPreview);
     
     await this.db.saveNote(this.currentNote);
+    
+    // Also sync to chrome.storage.sync to keep both storages in sync
+    await new Promise(resolve => {
+      chrome.storage.sync.get(['floatingNotes'], (result) => {
+        let notes = result.floatingNotes || [];
+        if (!Array.isArray(notes)) notes = [];
+        const existingIndex = notes.findIndex(n => n.id === this.currentNote.id);
+        if (existingIndex >= 0) {
+          notes[existingIndex] = this.currentNote;
+        } else {
+          notes.push(this.currentNote);
+        }
+        chrome.storage.sync.set({ 'floatingNotes': notes }, () => {
+          console.log('[Storage] ✓ Synced', notes.length, 'notes to chrome.storage.sync from saveCurrentNote');
+          resolve();
+        });
+      });
+    });
     
     // Refresh the UI to show updated title in the list
     await this.renderNotesList();
@@ -2012,6 +2127,220 @@ class NotesWorkspace {
       });
     }
   }
+
+  selectTimelinePost(postUri, noteId) {
+    if (noteId) {
+      // If this post came from a note, switch to Posts tab and select it
+      document.getElementById('posts-tab-content').style.display = 'flex';
+      document.getElementById('timeline-tab-content').style.display = 'none';
+      document.getElementById('tab-posts').classList.add('active');
+      document.getElementById('tab-timeline').classList.remove('active');
+      
+      const note = this.allNotes.find(n => n.id === noteId);
+      if (note) {
+        setTimeout(() => {
+          this.selectNote(note);
+          const noteCard = document.getElementById(`note-${noteId}`);
+          if (noteCard) {
+            noteCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
+      }
+    } else {
+      console.log('[Timeline] Post not linked to a local note:', postUri);
+      this.showMessage('This post isn\'t linked to a local note', 'info');
+    }
+  }
+
+  async fetchUserTimeline(limit = 50) {
+    // Get session from BlueskyIntegration
+    const session = window.bluesky ? window.bluesky.session : null;
+    
+    if (!session) {
+      console.warn('[Timeline] Not logged in');
+      return [];
+    }
+
+    try {
+      console.log('[Timeline] Fetching posts for:', session.did);
+      console.log('[Timeline] Access token exists:', !!session.accessJwt);
+      
+      // Use query parameters for GET request
+      const url = new URL('https://bsky.social/xrpc/app.bsky.feed.getAuthorFeed');
+      url.searchParams.append('actor', session.did);
+      url.searchParams.append('limit', limit);
+      url.searchParams.append('filter', 'posts_no_replies'); // Only get posts, not replies
+      
+      const response = await fetch(url.toString(), {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${session.accessJwt}`,
+        },
+      });
+
+      console.log('[Timeline] API Response status:', response.status);
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('[Timeline] API Error:', response.status, response.statusText, errorText);
+        return [];
+      }
+
+      const data = await response.json();
+      console.log('[Timeline] Fetched posts:', data.feed ? data.feed.length : 0, data);
+      return data.feed || [];
+    } catch (error) {
+      console.error('[Timeline] Fetch error:', error);
+      return [];
+    }
+  }
+
+  renderTimeline() {
+    const timelineView = document.getElementById('timeline-view');
+    const timelineLoading = document.getElementById('timeline-loading');
+    const timelineEmpty = document.getElementById('timeline-empty');
+
+    if (!timelineView) {
+      console.error('[Timeline] timelineView element not found');
+      return;
+    }
+
+    // CRITICAL: Reload from storage FIRST to ensure we have latest notes
+    chrome.storage.sync.get(['floatingNotes'], (result) => {
+      if (result.floatingNotes && Array.isArray(result.floatingNotes)) {
+        this.allNotes = result.floatingNotes;
+        console.log('[Timeline] Reloaded from storage.sync:', this.allNotes.length, 'notes');
+      }
+      
+      // Get session from BlueskyIntegration
+      const session = window.bluesky ? window.bluesky.session : null;
+      console.log('[Timeline] Session available:', !!session, session);
+      
+      if (!session) {
+        console.log('[Timeline] No session, showing login message');
+        timelineLoading.style.display = 'none';
+        timelineView.style.display = 'none';
+        timelineEmpty.style.display = 'block';
+        timelineEmpty.innerHTML = '<p>Please log in to Bluesky to see your timeline</p>';
+        return;
+      }
+
+      // Show loading
+      timelineLoading.style.display = 'block';
+      timelineView.style.display = 'none';
+      timelineEmpty.style.display = 'none';
+
+      console.log('[Timeline] Starting render...');
+
+      this.fetchUserTimeline(30).then(posts => {
+        console.log('[Timeline] Posts received:', posts.length);
+        timelineLoading.style.display = 'none';
+
+        if (!posts || posts.length === 0) {
+          console.log('[Timeline] No posts to display');
+          timelineEmpty.style.display = 'block';
+          timelineEmpty.innerHTML = '<p>No posts yet. Start posting to see them here!</p>';
+          return;
+        }
+
+        timelineView.style.display = 'block';
+        timelineView.innerHTML = `<div style="overflow: hidden; width: 100%;">` + posts.map((item, index) => {
+          const post = item.post;
+          const author = post.author;
+          const likeCount = post.likeCount || 0;
+          const repostCount = post.repostCount || 0;
+          const replyCount = post.replyCount || 0;
+          
+          // Log the first item to see structure
+          if (index === 0) {
+            console.log('[Timeline] Sample post structure:', post, 'record:', post.record);
+          }
+          
+          // Try different date fields
+          let createdAt = null;
+          if (post.record && post.record.createdAt) {
+            createdAt = new Date(post.record.createdAt);
+          } else if (post.createdAt) {
+            createdAt = new Date(post.createdAt);
+          } else if (post.indexedAt) {
+            createdAt = new Date(post.indexedAt);
+          }
+          
+          const isValidDate = createdAt && !isNaN(createdAt.getTime());
+          const dateStr = isValidDate 
+            ? createdAt.toLocaleDateString() + ' ' + createdAt.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
+            : 'Unknown date';
+
+          // Check if this post came from a note
+          const linkedNote = this.allNotes.find(n => n.postUri === post.uri);
+          const noteInfo = this.allNotes.map(n => `[id:${n.id}|uri:${n.postUri || 'NONE'}|status:${n.status}]`).join(', ');
+          console.log('[Timeline] Post:', post.uri.substring(post.uri.lastIndexOf('/') + 1), 'Notes:', noteInfo, 'Match:', !!linkedNote);
+          const linkedIndicator = linkedNote ? `<span style="color: #00a8e8; font-weight: 600; margin-left: 0.5rem;">✓ SkyPost</span>` : '';
+
+          return `
+            <div style="padding: 1rem; border-bottom: 1px solid #e5e7eb; cursor: pointer; transition: background 0.2s;" 
+                 data-post-uri="${post.uri}"
+                 data-note-id="${linkedNote?.id || ''}"
+                 class="timeline-post">
+              <div style="display: flex; gap: 0.75rem; margin-bottom: 0.75rem;">
+                <img src="${author.avatar || ''}" alt="${author.displayName}" 
+                     style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover;">
+                <div style="flex: 1;">
+                  <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <strong style="color: #1f2937;">${author.displayName || author.handle}</strong>
+                    <span style="color: #9ca3af; font-size: 0.9rem;">@${author.handle}</span>
+                    ${linkedIndicator}
+                  </div>
+                  <div style="color: #9ca3af; font-size: 0.85rem;">${dateStr}</div>
+                </div>
+              </div>
+              <div style="color: #374151; line-height: 1.5; margin-bottom: 0.75rem; word-wrap: break-word;">
+                ${post.record.text}
+              </div>
+              <div style="display: flex; gap: 1.5rem; color: #9ca3af; font-size: 0.85rem;">
+                <span>💬 ${replyCount}</span>
+                <span>🔄 ${repostCount}</span>
+                <span>❤️ ${likeCount}</span>
+              </div>
+            </div>
+          `;
+        }).join('') + `</div>`;
+      }).catch(error => {
+        console.error('[Timeline] Render error:', error);
+        timelineLoading.style.display = 'none';
+        timelineEmpty.style.display = 'block';
+        timelineEmpty.innerHTML = '<p>Error loading timeline. Check console for details.</p>';
+      });
+
+      // Add event delegation for timeline post clicks and hover
+      const timelineViewEl = document.getElementById('timeline-view');
+      if (timelineViewEl) {
+        timelineViewEl.addEventListener('click', (e) => {
+          const postElement = e.target.closest('.timeline-post');
+          if (postElement) {
+            const postUri = postElement.dataset.postUri;
+            const noteId = postElement.dataset.noteId;
+            console.log('[Timeline] Post clicked:', postUri, noteId);
+            this.selectTimelinePost(postUri, noteId);
+          }
+        });
+        
+        timelineViewEl.addEventListener('mouseover', (e) => {
+          const postElement = e.target.closest('.timeline-post');
+          if (postElement) {
+            postElement.style.background = '#f9fafb';
+          }
+        });
+        
+        timelineViewEl.addEventListener('mouseout', (e) => {
+          const postElement = e.target.closest('.timeline-post');
+          if (postElement) {
+            postElement.style.background = 'transparent';
+          }
+        });
+      }
+    });
+  }
 }
 
 // Bluesky Integration - handles login, posting, and session management
@@ -2639,6 +2968,88 @@ class BlueskyIntegration {
 
       const responseData = await postResponse.json();
       console.log('[handlePost] Success! Posted URI:', responseData.uri);
+      console.log('[handlePost] currentNote exists:', !!this.currentNote);
+      console.log('[handlePost] currentNote id:', this.currentNote?.id);
+
+      // Save the note with the post URI for timeline linking
+      if (responseData.uri) {
+        if (this.currentNote) {
+          // If a note is loaded, update it
+          console.log('[handlePost] Saving postUri to existing note:', this.currentNote.id);
+          this.currentNote.postUri = responseData.uri;
+          this.currentNote.postedAt = new Date().toISOString();
+          this.currentNote.status = 'published';
+          await this.saveCurrentNote();
+          console.log('[handlePost] ✓ Note saved with postUri');
+        } else {
+          // If no note is loaded, create a new note with the posted content
+          console.log('[handlePost] No currentNote - creating new note for posted content');
+          
+          const newNote = {
+            id: Date.now().toString(),
+            text: postText,
+            content: postText,
+            postUri: responseData.uri,
+            postedAt: new Date().toISOString(),
+            status: 'published',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            color: (this.colors && this.colors.length > 0) ? this.colors[0] : '#3b82f6', // Default blue color
+            postHistory: [Date.now()],
+          };
+          
+          
+          // First, load existing notes from storage if this.allNotes is empty/undefined
+          if (!this.allNotes || this.allNotes.length === 0) {
+            await new Promise(resolve => {
+              chrome.storage.sync.get(['floatingNotes'], (result) => {
+                if (result.floatingNotes && Array.isArray(result.floatingNotes)) {
+                  this.allNotes = result.floatingNotes;
+                } else {
+                  this.allNotes = [];
+                }
+                resolve();
+              });
+            });
+          }
+          
+          // Now add the new note to the existing notes
+          this.allNotes.push(newNote);
+          
+          // If db is available, save to database too
+          if (this.db && this.db.saveNote) {
+            try {
+              await this.db.saveNote(newNote);
+            } catch (dbError) {
+              console.warn('[handlePost] DB save failed, continuing with storage.sync only:', dbError);
+            }
+          }
+          
+          // Sync ALL notes to storage
+          console.log('[handlePost] Syncing', this.allNotes.length, 'notes to storage');
+          await new Promise(resolve => {
+            chrome.storage.sync.set({ 'floatingNotes': this.allNotes }, () => {
+              console.log('[Storage] ✓ Synced', this.allNotes.length, 'notes to chrome.storage.sync');
+              resolve();
+            });
+          });
+          
+          console.log('[handlePost] ✓ New note created with postUri');
+        }
+      } else {
+        console.warn('[handlePost] No URI in response - post not linked to note!');
+      }
+
+      // Reload allNotes from storage to reflect any new notes created
+      await new Promise(resolve => {
+        chrome.storage.sync.get(['floatingNotes'], (result) => {
+          if (result.floatingNotes) {
+            this.allNotes = result.floatingNotes;
+            console.log('[handlePost] Reloaded allNotes from storage, now have:', this.allNotes.length, 'notes');
+          }
+          resolve();
+        });
+      });
 
       this.showMessage('✅ Posted to Bluesky!', 'success');
       textarea.value = '';
