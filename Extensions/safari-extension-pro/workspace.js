@@ -863,17 +863,13 @@ class NotesWorkspace {
     const editor = document.getElementById('editor-content');
     this.currentNote.content = editor.innerHTML || editor.value || '';
 
-    // Add #Adblock hashtag if this is a video and hashtag isn't already present
-    if (this.currentNote.customLinkPreview) {
-      const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(this.currentNote.customLinkPreview.url || '');
+    // Add #Adblock hashtag if this is a YouTube video and hashtag isn't already present
+    if (this.currentNote.customLinkPreview && this.currentNote.customLinkPreview.url) {
+      const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(this.currentNote.customLinkPreview.url);
       
       if (isYoutubeVideo && !this.currentNote.content.includes('#Adblock')) {
-        const plainText = editor.innerText || '';
-        if (plainText.trim()) {
-          this.currentNote.content = editor.innerHTML + ' #Adblock';
-        } else if (!this.currentNote.content.includes('#Adblock')) {
-          this.currentNote.content = '#Adblock';
-        }
+        // Just append the hashtag to the content
+        this.currentNote.content = (this.currentNote.content.trim() ? this.currentNote.content.trim() + ' ' : '') + '#Adblock';
       }
     }
 
@@ -2025,8 +2021,53 @@ class BlueskyIntegration {
 
   loadSession() {
     return new Promise((resolve) => {
-      // Try chrome.storage first
-      if (chrome.storage && chrome.storage.local) {
+      // Try chrome.storage.sync first (for background service worker compatibility)
+      if (chrome.storage && chrome.storage.sync) {
+        chrome.storage.sync.get(['blueskySession'], (result) => {
+          if (result.blueskySession) {
+            this.session = result.blueskySession;
+            resolve(this.session);
+            return;
+          }
+
+          // If not in sync storage, try local storage
+          if (chrome.storage && chrome.storage.local) {
+            chrome.storage.local.get(['blueskySession'], (result) => {
+              if (result.blueskySession) {
+                this.session = result.blueskySession;
+                resolve(this.session);
+                return;
+              }
+
+              // If not in chrome.storage, try localStorage
+              try {
+                const sessionStr = localStorage.getItem('blueskySession');
+                if (sessionStr) {
+                  this.session = JSON.parse(sessionStr);
+                  resolve(this.session);
+                  return;
+                }
+              } catch (error) {
+                console.warn('[Bluesky] localStorage error:', error);
+              }
+
+              resolve(null);
+            });
+          } else {
+            // If no local storage, try localStorage
+            try {
+              const sessionStr = localStorage.getItem('blueskySession');
+              if (sessionStr) {
+                this.session = JSON.parse(sessionStr);
+              }
+            } catch (error) {
+              console.warn('[Bluesky] localStorage error:', error);
+            }
+            resolve(this.session || null);
+          }
+        });
+      } else if (chrome.storage && chrome.storage.local) {
+        // Fallback if sync not available
         chrome.storage.local.get(['blueskySession'], (result) => {
           if (result.blueskySession) {
             this.session = result.blueskySession;
@@ -2054,7 +2095,6 @@ class BlueskyIntegration {
           const sessionStr = localStorage.getItem('blueskySession');
           if (sessionStr) {
             this.session = JSON.parse(sessionStr);
-          } else {
           }
         } catch (error) {
           console.warn('[Bluesky] localStorage error:', error);
@@ -2211,11 +2251,17 @@ class BlueskyIntegration {
         timestamp: Date.now()
       };
 
-      // Save to both chrome.storage and localStorage
+      // Save to both chrome.storage.sync and chrome.storage.local
+      try {
+        chrome.storage.sync.set({ blueskySession: sessionData });
+      } catch (error) {
+        console.warn('[Bluesky] chrome.storage.sync failed:', error);
+      }
+
       try {
         chrome.storage.local.set({ blueskySession: sessionData });
       } catch (error) {
-        console.warn('[Bluesky] chrome.storage failed:', error);
+        console.warn('[Bluesky] chrome.storage.local failed:', error);
       }
 
       try {
@@ -2432,6 +2478,9 @@ class BlueskyIntegration {
     const textarea = document.getElementById('bsky-textarea');
     const postBtn = document.querySelector('button[type="submit"]');
     
+    console.log('[handlePost] Session:', this.session ? 'exists' : 'null');
+    console.log('[handlePost] Session details:', this.session ? { handle: this.session.handle, did: this.session.did, hasAccessJwt: !!this.session.accessJwt } : 'null');
+    
     if (!this.session) {
       this.showMessage('❌ Please login first', 'error');
       return;
@@ -2447,13 +2496,21 @@ class BlueskyIntegration {
     try {
       // Get clean text (without URLs) and detect links
       const { cleanText, url } = this.detectLinks(textarea.value);
-      const postText = url ? cleanText : textarea.value;
+      let postText = url ? cleanText : textarea.value;
+
+      // Add #Adblock hashtag if this is a YouTube video and hashtag isn't already present
+      if (url) {
+        const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(url);
+        if (isYoutubeVideo && !postText.includes('#Adblock')) {
+          postText += ' #Adblock';
+        }
+      }
 
       // Build post record
       const postRecord = {
         $type: 'app.bsky.feed.post',
         text: postText,
-        created_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         facets: []
       };
 
@@ -2492,49 +2549,60 @@ class BlueskyIntegration {
       }
 
       // Add link preview if URL detected
-      if (url && this.customLinkPreview && !imageEmbed) {
+      if (url && !imageEmbed) {
         try {
-          const ogData = this.customLinkPreview;
-          const embedUrl = ogData.url || url;
-
-          let linkEmbed = {
-            $type: 'app.bsky.embed.external',
-            external: {
-              uri: embedUrl,
-              title: ogData.title || '',
-              description: ogData.description || '',
-            }
-          };
-
-          if (ogData.image) {
-            try {
-              const thumbResponse = await fetch(ogData.image);
-              const thumbBlob = await thumbResponse.blob();
-              const thumbUploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${this.session.accessJwt}`,
-                  'Content-Type': thumbBlob.type,
-                },
-                body: thumbBlob
-              });
-
-              if (thumbUploadResponse.ok) {
-                const thumbData = await thumbUploadResponse.json();
-                linkEmbed.external.thumb = thumbData.blob;
-              }
-            } catch (error) {
-              console.warn('Thumbnail upload failed, posting without thumb');
-            }
+          // If customLinkPreview doesn't exist but we have a URL, fetch the OG data
+          let ogData = this.customLinkPreview;
+          
+          if (!ogData) {
+            console.log('[handlePost] Fetching OG data for URL:', url);
+            ogData = await this.fetchOGData(url);
           }
+          
+          if (ogData) {
+            const embedUrl = ogData.url || url;
 
-          postRecord.embed = linkEmbed;
+            let linkEmbed = {
+              $type: 'app.bsky.embed.external',
+              external: {
+                uri: embedUrl,
+                title: ogData.title || '',
+                description: ogData.description || '',
+              }
+            };
+
+            if (ogData.image) {
+              try {
+                const thumbResponse = await fetch(ogData.image);
+                const thumbBlob = await thumbResponse.blob();
+                const thumbUploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${this.session.accessJwt}`,
+                    'Content-Type': thumbBlob.type,
+                  },
+                  body: thumbBlob
+                });
+
+                if (thumbUploadResponse.ok) {
+                  const thumbData = await thumbUploadResponse.json();
+                  linkEmbed.external.thumb = thumbData.blob;
+                }
+              } catch (error) {
+                console.warn('Thumbnail upload failed, posting without thumb');
+              }
+            }
+
+            postRecord.embed = linkEmbed;
+            console.log('[handlePost] Added link embed to post');
+          }
         } catch (error) {
           console.error('Link preview error:', error);
         }
       }
 
       // Post to Bluesky
+      console.log('[handlePost] Posting to Bluesky with record:', postRecord);
       const postResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.createRecord', {
         method: 'POST',
         headers: {
@@ -2548,10 +2616,16 @@ class BlueskyIntegration {
         }),
       });
 
+      console.log('[handlePost] Response status:', postResponse.status);
+      
       if (!postResponse.ok) {
         const error = await postResponse.json();
-        throw new Error(error.error_description || 'Post failed');
+        console.error('[handlePost] API Error:', error);
+        throw new Error(error.error_description || error.message || 'Post failed');
       }
+
+      const responseData = await postResponse.json();
+      console.log('[handlePost] Success! Posted URI:', responseData.uri);
 
       this.showMessage('✅ Posted to Bluesky!', 'success');
       textarea.value = '';

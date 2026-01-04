@@ -863,17 +863,13 @@ class NotesWorkspace {
     const editor = document.getElementById('editor-content');
     this.currentNote.content = editor.innerHTML || editor.value || '';
 
-    // Add #Adblock hashtag if this is a video and hashtag isn't already present
-    if (this.currentNote.customLinkPreview) {
-      const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(this.currentNote.customLinkPreview.url || '');
+    // Add #Adblock hashtag if this is a YouTube video and hashtag isn't already present
+    if (this.currentNote.customLinkPreview && this.currentNote.customLinkPreview.url) {
+      const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(this.currentNote.customLinkPreview.url);
       
       if (isYoutubeVideo && !this.currentNote.content.includes('#Adblock')) {
-        const plainText = editor.innerText || '';
-        if (plainText.trim()) {
-          this.currentNote.content = editor.innerHTML + ' #Adblock';
-        } else if (!this.currentNote.content.includes('#Adblock')) {
-          this.currentNote.content = '#Adblock';
-        }
+        // Just append the hashtag to the content
+        this.currentNote.content = (this.currentNote.content.trim() ? this.currentNote.content.trim() + ' ' : '') + '#Adblock';
       }
     }
 
@@ -2456,13 +2452,21 @@ class BlueskyIntegration {
     try {
       // Get clean text (without URLs) and detect links
       const { cleanText, url } = this.detectLinks(textarea.value);
-      const postText = url ? cleanText : textarea.value;
+      let postText = url ? cleanText : textarea.value;
+
+      // Add #Adblock hashtag if this is a YouTube video and hashtag isn't already present
+      if (url) {
+        const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(url);
+        if (isYoutubeVideo && !postText.includes('#Adblock')) {
+          postText += ' #Adblock';
+        }
+      }
 
       // Build post record
       const postRecord = {
         $type: 'app.bsky.feed.post',
         text: postText,
-        created_at: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
         facets: []
       };
 
@@ -2501,43 +2505,53 @@ class BlueskyIntegration {
       }
 
       // Add link preview if URL detected
-      if (url && this.customLinkPreview && !imageEmbed) {
+      if (url && !imageEmbed) {
         try {
-          const ogData = this.customLinkPreview;
-          const embedUrl = ogData.url || url;
-
-          let linkEmbed = {
-            $type: 'app.bsky.embed.external',
-            external: {
-              uri: embedUrl,
-              title: ogData.title || '',
-              description: ogData.description || '',
-            }
-          };
-
-          if (ogData.image) {
-            try {
-              const thumbResponse = await fetch(ogData.image);
-              const thumbBlob = await thumbResponse.blob();
-              const thumbUploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${this.session.accessJwt}`,
-                  'Content-Type': thumbBlob.type,
-                },
-                body: thumbBlob
-              });
-
-              if (thumbUploadResponse.ok) {
-                const thumbData = await thumbUploadResponse.json();
-                linkEmbed.external.thumb = thumbData.blob;
-              }
-            } catch (error) {
-              console.warn('Thumbnail upload failed, posting without thumb');
-            }
+          // If customLinkPreview doesn't exist but we have a URL, fetch the OG data
+          let ogData = this.customLinkPreview;
+          
+          if (!ogData) {
+            console.log('[handlePost] Fetching OG data for URL:', url);
+            ogData = await this.fetchOGData(url);
           }
+          
+          if (ogData) {
+            const embedUrl = ogData.url || url;
 
-          postRecord.embed = linkEmbed;
+            let linkEmbed = {
+              $type: 'app.bsky.embed.external',
+              external: {
+                uri: embedUrl,
+                title: ogData.title || '',
+                description: ogData.description || '',
+              }
+            };
+
+            if (ogData.image) {
+              try {
+                const thumbResponse = await fetch(ogData.image);
+                const thumbBlob = await thumbResponse.blob();
+                const thumbUploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${this.session.accessJwt}`,
+                    'Content-Type': thumbBlob.type,
+                  },
+                  body: thumbBlob
+                });
+
+                if (thumbUploadResponse.ok) {
+                  const thumbData = await thumbUploadResponse.json();
+                  linkEmbed.external.thumb = thumbData.blob;
+                }
+              } catch (error) {
+                console.warn('Thumbnail upload failed, posting without thumb');
+              }
+            }
+
+            postRecord.embed = linkEmbed;
+            console.log('[handlePost] Added link embed to post');
+          }
         } catch (error) {
           console.error('Link preview error:', error);
         }
