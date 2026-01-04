@@ -11,7 +11,10 @@ try {
 } catch (err) {
   console.warn('⚠️  Stripe initialization failed:', err.message);
 }
-const nodemailer = require('nodemailer');
+const sgMail = require('@sendgrid/mail');
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 const { Pool } = require('pg');
 
 const app = express();
@@ -138,62 +141,68 @@ app.get('/test', (req, res) => {
   res.json({ message: 'Backend is working!' });
 });
 
-// Email configuration with nodemailer
-// Using Mailgun for reliability (free tier available, very reliable on Render)
-const emailTransporter = nodemailer.createTransport({
-  host: 'smtp.mailgun.org',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.MAILGUN_SMTP_USER || process.env.EMAIL_USER || 'postmaster@sandbox.mailgun.org',
-    pass: process.env.MAILGUN_SMTP_PASSWORD || process.env.EMAIL_PASSWORD || 'your-mailgun-password'
-  }
-});
-
-// Send license email
+// Send license email via SendGrid
 async function sendLicenseEmail(email, licenseKey) {
   try {
+    if (!process.env.SENDGRID_API_KEY) {
+      console.warn(`⚠️  SENDGRID_API_KEY not set, skipping email send`);
+      return false;
+    }
+
     const htmlContent = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">Welcome to SkyPost Pro!</h2>
-        <p>Thank you for upgrading to SkyPost Pro. Your license has been activated.</p>
-        
-        <div style="background-color: #f5f5f5; padding: 20px; border-radius: 8px; margin: 20px 0;">
-          <p><strong>Your License Key:</strong></p>
-          <p style="font-size: 18px; font-family: monospace; color: #0066cc; word-break: break-all;">${licenseKey}</p>
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0;">
+          <h2 style="margin: 0; font-size: 28px;">🎉 Welcome to SkyPost Pro!</h2>
         </div>
         
-        <h3>How to Activate:</h3>
-        <ol>
-          <li>Open the SkyPost extension</li>
-          <li>Go to Settings → License</li>
-          <li>Click "Activate License"</li>
-          <li>Paste your license key above</li>
-          <li>Click "Verify License"</li>
-        </ol>
-        
-        <h3>Pro Features:</h3>
-        <ul>
-          <li>Unlimited notes</li>
-          <li>Advanced formatting</li>
-          <li>Priority support</li>
-          <li>Works on all devices with your licenst ae key</li>
-        </ul>
-        
-        <p style="color: #666; font-size: 12px; margin-top: 30px;">
-          If you have any questions, please contact support@skypost.io
-        </p>
+        <div style="background: white; padding: 30px; border: 1px solid #e0e0e0; border-radius: 0 0 8px 8px;">
+          <p style="color: #333; font-size: 16px;">Thank you for upgrading to SkyPost Pro. Your license key is ready to use!</p>
+          
+          <div style="background-color: #f9f9f9; padding: 20px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #667eea;">
+            <p style="margin: 0 0 10px 0; color: #666; font-size: 12px; text-transform: uppercase; letter-spacing: 1px;"><strong>Your License Key</strong></p>
+            <p style="margin: 0; font-size: 20px; font-family: 'Courier New', monospace; color: #667eea; word-break: break-all; font-weight: bold;">${licenseKey}</p>
+          </div>
+          
+          <h3 style="color: #333; margin-top: 25px;">How to Activate:</h3>
+          <ol style="color: #555; line-height: 1.8;">
+            <li>Open the SkyPost extension in your browser</li>
+            <li>Click the "Upgrade" button</li>
+            <li>Click "Already have a license?"</li>
+            <li>Paste your license key in the input field</li>
+            <li>Click "Activate"</li>
+            <li>Enjoy Pro features! 🚀</li>
+          </ol>
+          
+          <h3 style="color: #333; margin-top: 25px;">Your Pro Benefits:</h3>
+          <ul style="color: #555; line-height: 1.8;">
+            <li>✨ Unlimited scheduled posts</li>
+            <li>📊 Post analytics & engagement tracking</li>
+            <li>🎨 Custom link & video cards</li>
+            <li>⭐ Priority support</li>
+            <li>🔄 1 year of updates</li>
+          </ul>
+          
+          <div style="background-color: #f0f8ff; padding: 15px; border-radius: 8px; margin-top: 25px; border-left: 4px solid #00a8e8;">
+            <p style="margin: 0; color: #0066cc; font-size: 13px;"><strong>💡 Pro Tip:</strong> Save this email for your records. Your license key is also displayed in the extension after activation.</p>
+          </div>
+          
+          <p style="color: #999; font-size: 12px; margin-top: 30px; text-align: center; border-top: 1px solid #e0e0e0; padding-top: 20px;">
+            If you have any questions, visit skypost.io or reply to this email.<br>
+            <strong>License expires:</strong> 1 year from activation date
+          </p>
+        </div>
       </div>
     `;
     
-    await emailTransporter.sendMail({
-      from: process.env.EMAIL_USER || 'noreply@skypost.io',
+    await sgMail.send({
       to: email,
+      from: process.env.SENDGRID_FROM_EMAIL || 'noreply@skypost.io',
       subject: '🎉 Your SkyPost Pro License Key',
-      html: htmlContent
+      html: htmlContent,
+      replyTo: 'support@skypost.io'
     });
     
-    console.log(`✅ License email sent to ${email}`);
+    console.log(`✅ License email sent via SendGrid to ${email}`);
     return true;
   } catch (error) {
     console.error(`❌ Failed to send license email to ${email}:`, error.message);

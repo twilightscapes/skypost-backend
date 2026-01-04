@@ -1,0 +1,197 @@
+╔════════════════════════════════════════════════════════════════════════════╗
+║                   SKYPOST STORE SUBMISSION PACKAGE                         ║
+║                         Version 1.1.3                                       ║
+║                   Created: January 4, 2026                                 ║
+╚════════════════════════════════════════════════════════════════════════════╝
+
+�� LOCATION: /Volumes/Basement/Sites/skypost-backend/Extensions/store-submissions/
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 WHAT'S INCLUDED
+═══════════════════════════════════════════════════════════════════════════════
+
+DOCUMENTATION (Read in Order):
+  1. README.md                    - Quick reference & overview
+  2. NEXT_STEPS.md               - Your immediate action items
+  3. SUBMISSION_GUIDE.md         - Detailed platform-specific instructions
+  4. SUBMISSION_CHECKLIST.md     - Complete checklists for each store
+  5. safari/SAFARI_DETAILED_GUIDE.md - Xcode & code signing instructions
+
+BUILD FILES (Ready to Submit):
+  ✅ firefox/skypost-v1.1.3.xpi   - Firefox Add-ons submission
+  ✅ chrome/skypost-v1.1.3.zip    - Chrome Web Store submission
+  📍 safari/                      - Safari requires manual setup
+
+UTILITIES:
+  • prepare-builds.sh            - Script to organize/rebuild submission files
+
+═══════════════════════════════════════════════════════════════════════════════
+🚀 QUICK START
+═══════════════════════════════════════════════════════════════════════════════
+
+1. Read: README.md (5 minutes)
+2. Read: NEXT_STEPS.md (10 minutes)  
+3. Check: Your build files exist
+   - firefox/skypost-v1.1.3.xpi ✓
+   - chrome/skypost-v1.1.3.zip ✓
+4. Create store accounts (15-30 min each)
+5. Follow submission steps in SUBMISSION_GUIDE.md
+
+═══════════════════════════════════════════════════════════════════════════════
+📊 SUBMISSION TIMELINE
+═══════════════════════════════════════════════════════════════════════════════
+
+WEEK 1:
+  • Friday AM: Submit to Firefox (review: 1-5 days)
+  • Friday PM: Submit to Chrome (review: 1-3 hours)
+
+WEEK 2 (OPTIONAL SAFARI):
+  • Mon-Wed: Prepare Safari app bundle & code signing
+  • Thursday: Submit to Safari App Store (review: 1-3 days)
+
+RESULT:
+  • Week 1-2: All extensions live on official stores!
+
+═══════════════════════════════════════════════════════════════════════════════
+✅ BROWSER/STORE STATUS
+═══════════════════════════════════════════════════════════════════════════════
+
+FIREFOX ADD-ONS (AMO)
+  Status: ✅ READY TO SUBMIT
+  File: firefox/skypost-v1.1.3.xpi
+  URL: https://addons.mozilla.org/en-US/developers/
+  Effort: Low (30 minutes)
+  Review Time: 1-5 days
+  
+  Next: Read SUBMISSION_GUIDE.md section "1. FIREFOX ADD-ONS"
+
+CHROME WEB STORE
+  Status: ✅ READY TO SUBMIT
+  File: chrome/skypost-v1.1.3.zip
+  URL: https://chrome.google.com/webstore/devconsole
+  Effort: Low (30 minutes)
+  Review Time: 1-3 hours
+  Cost: $5 (one-time developer registration)
+  
+  Next: Read SUBMISSION_GUIDE.md section "2. CHROME WEB STORE"
+
+SAFARI APP STORE
+  Status: ⏳ REQUIRES MANUAL SETUP
+  Location: safari/
+  URL: https://appstoreconnect.apple.com
+  Effort: Medium (2-3 hours)
+  Review Time: 1-3 days
+  Cost: $99/year (Apple Developer Program)
+  
+  Next: Read safari/SAFARI_DETAILED_GUIDE.md
+
+═══════════════════════════════════════════════════════════════════════════════
+📋 REQUIRED BEFORE SUBMISSION
+═══════════════════════════════════════════════════════════════════════════════
+
+Store Accounts:
+  ☐ Mozilla account (free) - https://addons.mozilla.org
+  ☐ Google Developer account ($5) - https://chrome.google.com/webstore/devconsole
+  ☐ Apple Developer account ($99/year) - https://developer.apple.com/enroll
+
+Content:
+  ☐ Website: https://skypost.app (have this ready)
+  ☐ Privacy Policy: https://skypost.app/privacy
+  ☐ Support Email: support@skypost.app (or your email)
+  ☐ App Description: Copy from SUBMISSION_GUIDE.md
+
+Graphics (Optional but Recommended):
+  ☐ Icon/Logo: 128x128px (Firefox/Chrome), 1024x1024px (Safari)
+  ☐ Screenshots: 1280x800px (2-5 recommended)
+
+═══════════════════════════════════════════════════════════════════════════════
+🔄 REBUILDING SUBMISSION PACKAGES
+═══════════════════════════════════════════════════════════════════════════════
+
+To rebuild after making code changes:
+
+```bash
+cd /Volumes/Basement/Sites/skypost-backend/Extensions
+
+# Rebuild extensions
+cd firefox-extension && ./build-firefox.sh && cd ..
+cd safari-extension-pro && bash build.sh && cd ..
+
+# Organize submission files
+./store-submissions/prepare-builds.sh
+```
+
+This will:
+  • Rebuild both Firefox and Chrome packages
+  • Copy new XPI to firefox/
+  • Create new ZIP in chrome/
+  • Update version numbers automatically
+
+═══════════════════════════════════════════════════════════════════════════════
+📚 DOCUMENT QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+Need to know...                              Read...
+─────────────────────────────────────────────────────────────────────────────
+What to do next?                            NEXT_STEPS.md
+How to submit to each store?                SUBMISSION_GUIDE.md
+Step-by-step checklist?                     SUBMISSION_CHECKLIST.md
+How to set up Safari?                       safari/SAFARI_DETAILED_GUIDE.md
+Account information?                        README.md (Accounts section)
+Build file locations?                       README.md (Build Files)
+Troubleshooting?                            SUBMISSION_GUIDE.md
+When will I get approved?                   README.md (Timeline)
+What if something goes wrong?               SUBMISSION_GUIDE.md (Troubleshooting)
+
+═══════════════════════════════════════════════════════════════════════════════
+💡 TIPS FOR SUCCESS
+═══════════════════════════════════════════════════════════════════════════════
+
+✓ Start with Firefox - it's straightforward and you'll get confidence
+✓ Do Chrome next - super fast approval, can be same day
+✓ Safari is optional - FF + Chrome gives you 90% of users
+✓ Don't rush Safari - it requires Xcode and code signing knowledge
+✓ Monitor first week - respond quickly to any store communications
+✓ Keep it simple - basic privacy policy is fine
+✓ Plan updates - have your next feature ready
+✓ Engage users - respond to reviews and feedback
+✓ Test thoroughly - install on fresh browser before submitting
+✓ Ask for help - each store has developer support forums
+
+═══════════════════════════════════════════════════════════════════════════════
+🎯 SUCCESS CRITERIA
+═══════════════════════════════════════════════════════════════════════════════
+
+YOU'VE SUCCEEDED WHEN:
+
+✅ SkyPost appears on Firefox Add-ons marketplace
+✅ SkyPost appears on Chrome Web Store  
+✅ SkyPost appears on Safari App Store (if submitting)
+✅ Users can install from official stores
+✅ Install numbers are increasing
+✅ You're getting positive reviews
+✅ Users are providing feature feedback
+
+═══════════════════════════════════════════════════════════════════════════════
+📞 SUPPORT RESOURCES
+═══════════════════════════════════════════════════════════════════════════════
+
+Firefox/AMO:
+  • Docs: https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons
+  • Forum: https://discourse.mozilla.org/c/add-ons
+  
+Chrome Web Store:
+  • Docs: https://developer.chrome.com/docs/extensions
+  • Support: https://support.google.com/chrome
+  
+Safari/App Store:
+  • Docs: https://developer.apple.com/documentation/safariservices
+  • Guide: See safari/SAFARI_DETAILED_GUIDE.md
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 YOU'RE READY TO LAUNCH! 
+
+Start with NEXT_STEPS.md and follow the guidance. All the hard work is done!
+
+═══════════════════════════════════════════════════════════════════════════════

@@ -990,35 +990,48 @@ class NotesWorkspace {
 
     // Build unique color filter buttons
     const uniqueColors = [...new Set(this.allNotes.map(n => n.color || '#ffffff'))].sort();
+    // Filter out white (#ffffff) as it's the default
+    const colorOptions = uniqueColors.filter(color => color !== '#ffffff');
     const colorFiltersContainer = document.getElementById('color-filters');
+    const colorFilterBtn = document.getElementById('color-filter-btn');
+    const colorFilterMenu = document.getElementById('color-filter-menu');
+    
     if (colorFiltersContainer) {
-      colorFiltersContainer.innerHTML = uniqueColors.map(color => `
-        <button class="color-filter-btn" data-filter="color-${color}" style="
-          width: 28px;
-          height: 28px;
-          border-radius: 4px;
-          background-color: ${color};
-          border: 2px solid transparent;
-          cursor: pointer;
-          transition: all 0.2s;
-        " title="Filter by ${color}"></button>
-      `).join('');
-      
-      // Add click handlers to color filter buttons
-      document.querySelectorAll('.color-filter-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const filter = btn.getAttribute('data-filter');
-          this.currentFilter = filter;
-          this.updateFilterButtons();
-          this.renderNotesList();
-          // Close dropdown after selection
-          const menu = document.getElementById('color-filter-menu');
-          if (menu) {
-            menu.style.display = 'none';
-          }
+      if (colorOptions.length === 0) {
+        // Hide color filter button if no colors are set
+        if (colorFilterBtn) colorFilterBtn.style.display = 'none';
+        if (colorFilterMenu) colorFilterMenu.style.display = 'none';
+        colorFiltersContainer.innerHTML = '';
+      } else {
+        if (colorFilterBtn) colorFilterBtn.style.display = 'inline-block';
+        colorFiltersContainer.innerHTML = colorOptions.map(color => `
+          <button class="color-filter-btn" data-filter="color-${color}" style="
+            width: 28px;
+            height: 28px;
+            border-radius: 4px;
+            background-color: ${color};
+            border: 2px solid transparent;
+            cursor: pointer;
+            transition: all 0.2s;
+          " title="Filter by ${color}"></button>
+        `).join('');
+        
+        // Add click handlers to color filter buttons
+        document.querySelectorAll('.color-filter-btn').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const filter = btn.getAttribute('data-filter');
+            this.currentFilter = filter;
+            this.updateFilterButtons();
+            this.renderNotesList();
+            // Close dropdown after selection
+            const menu = document.getElementById('color-filter-menu');
+            if (menu) {
+              menu.style.display = 'none';
+            }
+          });
         });
-      });
+      }
     }
 
     // Add click handlers to type filter buttons
@@ -1477,7 +1490,7 @@ class NotesWorkspace {
     document.querySelectorAll('.filter-btn').forEach(btn => {
       const btnFilter = btn.getAttribute('data-filter');
       if (btnFilter === this.currentFilter) {
-        btn.style.background = '#667eea';
+        btn.style.background = '#00a8e8';
         btn.style.color = 'white';
       } else {
         btn.style.background = '#e5e7eb';
