@@ -159,7 +159,16 @@ class NotesWorkspace {
     });
 
     // New note
-    document.getElementById('new-note-btn').addEventListener('click', () => {
+    document.getElementById('new-note-btn').addEventListener('click', async () => {
+      // Save current draft if exists and has content
+      if (this.currentNote) {
+        const editor = document.getElementById('editor-content');
+        const hasContent = editor && editor.textContent && editor.textContent.trim().length > 0;
+        if (hasContent) {
+          await this.saveCurrentNote();
+          this.showMessage('Post saved ✓', 'success');
+        }
+      }
       this.createNewNote();
     });
 
@@ -403,6 +412,7 @@ class NotesWorkspace {
       // Check Pro license
       if (!window.licenseManager.canUseFeature('analytics')) {
         window.bluesky.showMessage('📊 Analytics is a Pro feature', 'info');
+        window.renderProModal();
         document.getElementById('pro-modal').classList.add('active');
         return;
       }
@@ -481,8 +491,9 @@ class NotesWorkspace {
     });
 
     // Save button
-    document.getElementById('btn-save').addEventListener('click', () => {
-      this.saveCurrentNote();
+    document.getElementById('btn-save').addEventListener('click', async () => {
+      await this.saveCurrentNote();
+      this.showMessage('Post saved ✓', 'success');
     });
 
     // Schedule button
@@ -509,35 +520,35 @@ class NotesWorkspace {
     });
 
     // Schedule form
-    document.getElementById('schedule-form').addEventListener('submit', (e) => {
-      e.preventDefault();
-      this.scheduleCurrentNote();
-    });
+    const scheduleForm = document.getElementById('schedule-form');
+    if (scheduleForm) {
+      scheduleForm.addEventListener('submit', (e) => {
+        console.log('[EventListener] Schedule form submit');
+        e.preventDefault();
+        this.scheduleCurrentNote();
+      });
+    } else {
+      console.warn('[EventListener] schedule-form element not found');
+    }
+
+    // Also add direct click handler to schedule button as fallback
+    const scheduleBtn = scheduleForm ? scheduleForm.querySelector('button[type="submit"]') : document.querySelector('form#schedule-form button[type="submit"]');
+    if (scheduleBtn) {
+      console.log('[EventListener] Schedule button found, adding click handler');
+      scheduleBtn.addEventListener('click', (e) => {
+        console.log('[EventListener] Schedule button clicked');
+        // Let form handle it if it submits, but this is a fallback
+        if (!e.defaultPrevented) {
+          e.preventDefault();
+          this.scheduleCurrentNote();
+        }
+      });
+    } else {
+      console.warn('[EventListener] schedule button not found');
+    }
 
     document.getElementById('cancel-schedule').addEventListener('click', () => {
       this.hideScheduleModal();
-    });
-
-    // Schedule link preview edit button
-    document.getElementById('schedule-link-edit-btn').addEventListener('click', () => {
-      const editorEl = document.getElementById('editor-content');
-      if (!editorEl) return;
-      
-      // Use textContent for contenteditable divs
-      const content = editorEl.textContent || editorEl.innerHTML;
-      let cleanContent = content;
-      if (content.includes('<')) {
-        const temp = document.createElement('div');
-        temp.innerHTML = content;
-        cleanContent = temp.textContent || temp.innerText || '';
-      }
-      
-      const { url } = this.detectLinks(cleanContent);
-      if (url) {
-        // Open the link preview modal for editing
-        const preview = this.currentNote && this.currentNote.customLinkPreview ? { ...this.currentNote.customLinkPreview } : {};
-        this.openLinkPreviewModal(url, preview);
-      }
     });
 
     // Close modal on escape
@@ -571,7 +582,18 @@ class NotesWorkspace {
     const editorContent = document.getElementById('editor-content');
     if (editorContent) {
       // Listen for input on contenteditable div
-      editorContent.addEventListener('input', () => {
+      editorContent.addEventListener('input', async () => {
+        // Auto-create note on first input if none exists
+        if (!this.currentNote) {
+          await this.createNewNote();
+        }
+        
+        // Auto-update title based on first line of content
+        if (this.currentNote) {
+          const firstLine = editorContent.textContent.split('\n')[0].substring(0, 50) || 'Untitled Post';
+          this.currentNote.title = firstLine;
+        }
+        
         this.updatePlaceholder();
         this.updateCharCounter();
         const text = editorContent.textContent || '';
@@ -740,15 +762,17 @@ class NotesWorkspace {
     this.selectNote(note);
     await this.renderNotesList();
     
-    // Focus title for immediate editing
-    document.getElementById('note-title').focus();
-    document.getElementById('note-title').select();
+    // Focus editor for immediate editing (title is hidden)
+    const editor = document.getElementById('editor-content');
+    editor.focus();
   }
 
   selectNote(note) {
     this.currentNote = note;
 
-    // Update UI
+    // Update UI - extract first line of content as title for display
+    const firstLine = (note.content || '').split('\n')[0].substring(0, 50) || 'Untitled Post';
+    note.title = firstLine;
     document.getElementById('note-title').value = note.title;
     
     // Set content in contenteditable div - preserve HTML (images, etc)
@@ -769,6 +793,16 @@ class NotesWorkspace {
       } else {
         preview.style.display = 'none';
       }
+    }
+    
+    // Clear Bluesky panel images and previews when switching notes
+    const bskyImagePreview = document.getElementById('bsky-image-preview');
+    if (bskyImagePreview) {
+      bskyImagePreview.style.display = 'none';
+    }
+    const bskyLinkPreview = document.getElementById('bsky-link-preview');
+    if (bskyLinkPreview) {
+      bskyLinkPreview.style.display = 'none';
     }
     
     // Update color picker
@@ -1083,7 +1117,7 @@ class NotesWorkspace {
               <div class="note-card ${this.currentNote?.id === note.id ? 'active' : ''}" id="note-${note.id}" data-note-id="${note.id}">
                 <div class="note-card-color" style="background-color: ${note.color};"></div>
                 <div class="note-card-content">
-                  <div class="note-card-title">${note.title}</div>
+                  <div class="note-card-title" style="font-size: 0.75rem; color: #999; font-weight: 500;">Post #${this.allNotes.indexOf(note) + 1}</div>
                   <div class="note-card-preview">${this.getPreview(note.content)}</div>
                   ${statusBadge}
                 </div>
@@ -1118,7 +1152,7 @@ class NotesWorkspace {
               const failureText = note.failureReason || 'Unknown error';
               return `
                 <div class="failed-post-item" data-note-id="${note.id}" style="padding: 0.75rem; background: #fef2f2; border-left: 3px solid #dc2626; border-radius: 4px; font-size: 0.85rem; cursor: pointer; transition: all 0.2s ease;" onmouseover="this.style.background='#fee2e2';" onmouseout="this.style.background='#fef2f2';" title="${failureText}">
-                  <div style="font-weight: 500; color: #1f2937; margin-bottom: 0.25rem;">${note.title}</div>
+                  <div style="font-weight: 500; color: #1f2937; margin-bottom: 0.25rem;">Post #${this.allNotes.indexOf(note) + 1}</div>
                   <div style="color: #dc2626; font-size: 0.75rem;">Error: ${failureText.substring(0, 50)}${failureText.length > 50 ? '...' : ''}</div>
                 </div>
               `;
@@ -1264,86 +1298,125 @@ class NotesWorkspace {
     dateTimeInput.min = datetimeValue;
     dateTimeInput.value = datetimeValue;
     
-    // Detect and show link preview if present
-    this.detectAndShowSchedulePreview();
-    
     modal.classList.add('visible');
     dateTimeInput.focus();
   }
 
-  async detectAndShowSchedulePreview() {
-    const editorEl = document.getElementById('editor-content');
-    if (!editorEl) {
-      return;
-    }
-    
-    // Use textContent for contenteditable divs (innerText can be unreliable)
-    const content = editorEl.textContent || editorEl.innerHTML;
-    
-    // Strip HTML if using innerHTML
-    let cleanContent = content;
-    if (content && content.includes('<')) {
-      const temp = document.createElement('div');
-      temp.innerHTML = content;
-      cleanContent = temp.textContent || temp.innerText || '';
-    }
-    
-    const { url } = this.detectLinks(cleanContent);
-    
-    const previewSection = document.getElementById('schedule-link-preview-section');
-    const previewDiv = document.getElementById('schedule-link-preview');
-    
-    if (!url) {
-      if (previewSection) previewSection.style.display = 'none';
-      return;
-    }
-    
-    if (previewSection) previewSection.style.display = 'block';
-    if (previewDiv) previewDiv.innerHTML = '<p style="text-align: center; color: #9ca3af; font-size: 0.9rem;">Loading preview...</p>';
-    
-    // Check if there's already a custom preview
-    let preview = this.currentNote && this.currentNote.customLinkPreview;
-    
-    // If no custom preview, fetch OG data
-    if (!preview) {
-      preview = await this.fetchOGData(url);
-      if (preview && !preview.url) {
-        preview.url = url;
-      }
-      // Save the fetched preview to currentNote so it's available for editing
-      if (preview && this.currentNote) {
-        this.currentNote.customLinkPreview = {
-          url: preview.url || url,
-          title: preview.title || '',
-          description: preview.description || '',
-          image: preview.image
-        };
-      }
-    }
-    
-    if (!preview) {
-      if (previewDiv) previewDiv.innerHTML = `<p style="text-align: center; color: #6b7280; font-size: 0.9rem;">Could not load preview for ${url}</p>`;
-      return;
-    }
-    
-    // Ensure URL is stored in preview for later use in background worker
-    if (!preview.url) {
-      preview.url = url;
-    }
-    
-    if (previewDiv) {
-      previewDiv.innerHTML = `
-        <div style="padding: 0.75rem; background: white; border-radius: 4px;">
-          ${preview.image ? `<img src="${preview.image}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 0.5rem;">` : ''}
-          <div style="font-weight: 500; color: #333; margin-bottom: 0.25rem; font-size: 0.9rem;">${preview.title || 'No title'}</div>
-          <div style="font-size: 0.8rem; color: #6b7280; line-height: 1.3;">${preview.description || 'No description'}</div>
-        </div>
-      `;
-    }
-  }
 
   hideScheduleModal() {
     document.getElementById('schedule-modal').classList.remove('visible');
+  }
+
+  showConfirmModal(title, message) {
+    return new Promise((resolve) => {
+      const modal = document.createElement('div');
+      modal.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+      `;
+      
+      modal.innerHTML = `
+        <div style="background: white; padding: 2rem; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.3); max-width: 400px; text-align: center;">
+          <h2 style="color: #333; margin-top: 0; margin-bottom: 1rem; font-size: 1.25rem;">${title}</h2>
+          <p style="color: #666; margin-bottom: 1.5rem; line-height: 1.5;">${message}</p>
+          <div style="display: flex; gap: 1rem; justify-content: center;">
+            <button id="confirm-cancel" style="padding: 0.75rem 1.5rem; background: #e5e7eb; color: #333; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">Cancel</button>
+            <button id="confirm-ok" style="padding: 0.75rem 1.5rem; background: #dc2626; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;">Delete All</button>
+          </div>
+        </div>
+      `;
+      
+      document.body.appendChild(modal);
+      
+      document.getElementById('confirm-cancel').addEventListener('click', () => {
+        modal.remove();
+        resolve(false);
+      });
+      
+      document.getElementById('confirm-ok').addEventListener('click', () => {
+        modal.remove();
+        resolve(true);
+      });
+      
+      // Close on Escape key
+      const escapeHandler = (e) => {
+        if (e.key === 'Escape') {
+          document.removeEventListener('keydown', escapeHandler);
+          modal.remove();
+          resolve(false);
+        }
+      };
+      document.addEventListener('keydown', escapeHandler);
+    });
+  }
+
+  showMessage(message, type = 'info') {
+    // Get or create message container
+    let container = document.getElementById('message-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'message-container';
+      container.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 10001;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-width: 350px;
+      `;
+      document.body.appendChild(container);
+    }
+    
+    // Create message element
+    const msgEl = document.createElement('div');
+    
+    // Color based on type
+    let bgColor = '#e3f2fd';
+    let textColor = '#1976d2';
+    let borderColor = '#1976d2';
+    
+    if (type === 'success') {
+      bgColor = '#f1f8e9';
+      textColor = '#558b2f';
+      borderColor = '#558b2f';
+    } else if (type === 'error') {
+      bgColor = '#ffebee';
+      textColor = '#c62828';
+      borderColor = '#c62828';
+    } else if (type === 'warning') {
+      bgColor = '#fff3e0';
+      textColor = '#e65100';
+      borderColor = '#e65100';
+    }
+    
+    msgEl.style.cssText = `
+      background: ${bgColor};
+      color: ${textColor};
+      padding: 12px 16px;
+      border-radius: 4px;
+      border-left: 4px solid ${borderColor};
+      animation: slideIn 0.3s ease-out;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    `;
+    msgEl.textContent = message;
+    
+    container.appendChild(msgEl);
+    
+    // Auto remove after 4 seconds
+    setTimeout(() => {
+      msgEl.style.animation = 'slideOut 0.3s ease-out';
+      setTimeout(() => msgEl.remove(), 300);
+    }, 4000);
   }
 
   updateNoteCard(noteId) {
@@ -1733,8 +1806,23 @@ class NotesWorkspace {
   }
 
   displayEditorLinkPreview(url, ogData, previewEl) {
-    // Store preview data in currentNote
-    if (!this.currentNote) return;
+    // Create a note if one doesn't exist
+    if (!this.currentNote) {
+      const newNote = {
+        id: Date.now().toString(),
+        title: 'New Post',
+        content: '',
+        color: '#ffffff',
+        status: 'draft',
+        scheduledFor: null,
+        postedAt: null,
+        postUri: null,
+        analytics: null,
+        failureReason: null,
+        createdAt: Date.now(),
+      };
+      this.currentNote = newNote;
+    }
     
     this.currentNote.customLinkPreview = {
       url,
@@ -1765,6 +1853,7 @@ class NotesWorkspace {
           e.stopPropagation();
           if (!window.licenseManager.canUseFeature('advancedPreviews')) {
             this.showMessage('Upgrade to Pro to edit link previews', 'info');
+            window.renderProModal();
             document.getElementById('pro-modal').classList.add('active');
             return;
           }
@@ -1899,6 +1988,626 @@ class NotesWorkspace {
         }
       });
     }
+  }
+}
+
+// Bluesky Integration - handles login, posting, and session management
+class BlueskyIntegration {
+  constructor() {
+    this.pdsUrl = 'https://bsky.social';
+    this.session = null;
+    this.pendingImageData = null;
+    this.pendingLinkUrl = null;
+    this.customLinkPreview = null; // For Pro feature: custom link preview data
+    this.pendingLinkPreview = null; // For preserving custom preview when transferred to composer
+    this.init();
+  }
+
+  async init() {
+    await this.loadSession();
+    this.setupEventListeners();
+    this.updateUI();
+  }
+
+  loadSession() {
+    return new Promise((resolve) => {
+      // Try chrome.storage first
+      if (chrome.storage && chrome.storage.local) {
+        chrome.storage.local.get(['blueskySession'], (result) => {
+          if (result.blueskySession) {
+            this.session = result.blueskySession;
+            resolve(this.session);
+            return;
+          }
+
+          // If not in chrome.storage, try localStorage
+          try {
+            const sessionStr = localStorage.getItem('blueskySession');
+            if (sessionStr) {
+              this.session = JSON.parse(sessionStr);
+              resolve(this.session);
+              return;
+            }
+          } catch (error) {
+            console.warn('[Bluesky] localStorage error:', error);
+          }
+
+          resolve(null);
+        });
+      } else {
+        // If chrome.storage not available, use localStorage
+        try {
+          const sessionStr = localStorage.getItem('blueskySession');
+          if (sessionStr) {
+            this.session = JSON.parse(sessionStr);
+          } else {
+          }
+        } catch (error) {
+          console.warn('[Bluesky] localStorage error:', error);
+        }
+        resolve(this.session || null);
+      }
+    });
+  }
+
+  setupEventListeners() {
+    const loginForm = document.getElementById('bluesky-login-form');
+    const composerForm = document.getElementById('bluesky-composer-form');
+    const textarea = document.getElementById('bsky-textarea');
+    const logoutBtn = document.getElementById('bsky-logout-btn');
+    const removeImageBtn = document.getElementById('bsky-remove-image-btn');
+
+    if (loginForm) {
+      loginForm.addEventListener('submit', (e) => this.handleLogin(e));
+    }
+
+    if (composerForm) {
+      composerForm.addEventListener('submit', (e) => this.handlePost(e));
+    }
+
+    if (textarea) {
+      textarea.addEventListener('input', () => {
+        document.getElementById('bsky-char-count').textContent = textarea.value.length;
+        const remaining = 300 - textarea.value.length;
+        const countEl = document.getElementById('bsky-char-count').parentElement;
+        countEl.classList.toggle('warning', remaining < 50 && remaining >= 0);
+        countEl.classList.toggle('error', remaining < 0);
+        
+        // Real-time link detection
+        this.detectAndShowLinkPreview(textarea.value);
+      });
+    }
+
+    if (logoutBtn) {
+      logoutBtn.addEventListener('click', () => {
+        if (confirm('Logout from Bluesky?')) {
+          chrome.storage.local.remove('blueskySession');
+          this.session = null;
+          this.updateUI();
+        }
+      });
+    }
+
+    if (removeImageBtn) {
+      removeImageBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        this.pendingImageData = null;
+        const preview = document.getElementById('bsky-image-preview');
+        if (preview) preview.style.display = 'none';
+      });
+    }
+
+    // Link preview modal handlers (Pro feature)
+    const linkEditBtn = document.getElementById('link-preview-edit-btn');
+    const linkSaveBtn = document.getElementById('link-preview-save-btn');
+    const linkCancelBtn = document.getElementById('link-preview-cancel-btn');
+    const linkModal = document.getElementById('link-preview-modal');
+
+    if (linkEditBtn) {
+      linkEditBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (!window.licenseManager.canUseFeature('advancedPreviews')) {
+          this.showMessage('Upgrade to Pro to edit link previews', 'info');
+          window.renderProModal();
+          document.getElementById('pro-modal').classList.add('active');
+          return;
+        }
+        this.openLinkPreviewModal();
+      });
+    }
+
+    if (linkSaveBtn) {
+      linkSaveBtn.addEventListener('click', () => this.saveLinkPreview());
+    }
+
+    if (linkCancelBtn) {
+      linkCancelBtn.addEventListener('click', () => {
+        if (linkModal) linkModal.style.display = 'none';
+      });
+    }
+
+    if (linkModal) {
+      linkModal.addEventListener('click', (e) => {
+        // Only close if clicking the exact background, not the modal content
+        if (e.target === linkModal) {
+          linkModal.style.display = 'none';
+        }
+      });
+      
+      // Close on Escape key
+      linkModal.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          linkModal.style.display = 'none';
+        }
+      });
+    }
+  }
+
+  updateUI() {
+    const loginContainer = document.getElementById('bluesky-login-container');
+    const composerContainer = document.getElementById('bluesky-composer-container');
+
+    if (this.session) {
+      loginContainer.style.display = 'none';
+      composerContainer.style.display = 'block';
+      const initials = this.session.handle.charAt(0).toUpperCase();
+      document.getElementById('bsky-avatar').textContent = initials;
+      document.getElementById('bsky-handle').textContent = `@${this.session.handle}`;
+      document.getElementById('bsky-textarea').value = '';
+      document.getElementById('bsky-char-count').textContent = '0';
+      
+      // Clear image and link previews
+      const imagePreview = document.getElementById('bsky-image-preview');
+      if (imagePreview) {
+        imagePreview.style.display = 'none';
+      }
+      const linkPreview = document.getElementById('bsky-link-preview');
+      if (linkPreview) {
+        linkPreview.style.display = 'none';
+      }
+    } else {
+      loginContainer.style.display = 'block';
+      composerContainer.style.display = 'none';
+    }
+  }
+
+  async handleLogin(e) {
+    e.preventDefault();
+    const username = document.getElementById('bsky-username').value;
+    const password = document.getElementById('bsky-password').value;
+
+    try {
+      const response = await fetch(`${this.pdsUrl}/xrpc/com.atproto.server.createSession`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: username, password })
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Login failed');
+      }
+
+      const data = await response.json();
+      const sessionData = {
+        accessJwt: data.accessJwt,
+        refreshJwt: data.refreshJwt,
+        did: data.did,
+        handle: data.handle,
+        timestamp: Date.now()
+      };
+
+      // Save to both chrome.storage and localStorage
+      try {
+        chrome.storage.local.set({ blueskySession: sessionData });
+      } catch (error) {
+        console.warn('[Bluesky] chrome.storage failed:', error);
+      }
+
+      try {
+        localStorage.setItem('blueskySession', JSON.stringify(sessionData));
+      } catch (error) {
+        console.warn('[Bluesky] localStorage failed:', error);
+      }
+
+      this.session = sessionData;
+
+      this.showMessage('✅ Logged in!', 'success');
+      this.updateUI();
+    } catch (error) {
+      this.showMessage(`❌ ${error.message}`, 'error');
+    }
+  }
+
+  detectLinks(text) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const match = urlRegex.exec(text);
+    
+    if (!match) return { cleanText: text, url: null };
+    
+    const url = match[1];
+    // Remove URL from text and trim extra whitespace
+    const cleanText = text.substring(0, match.index) + text.substring(match.index + url.length);
+    
+    return { cleanText: cleanText.trim(), url };
+  }
+
+  async fetchOGData(url) {
+    try {
+      // Check if it's a YouTube link - use oEmbed API instead of OG scraping
+      const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
+      if (youtubeMatch) {
+        const videoId = youtubeMatch[1];
+        
+        try {
+          // Use YouTube oEmbed API (no authentication needed)
+          const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
+          const oembedResponse = await fetch(oembedUrl);
+          
+          if (oembedResponse.ok) {
+            const oembedData = await oembedResponse.json();
+            
+            return {
+              title: (oembedData.title || 'Video').substring(0, 100),
+              description: (oembedData.author_name || 'YouTube').substring(0, 256),
+              image: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+            };
+          }
+        } catch (e) {
+          // Fall back to constructed thumbnail
+          return {
+            title: 'Video'.substring(0, 100),
+            description: 'YouTube'.substring(0, 256),
+            image: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
+          };
+        }
+      }
+
+      // For non-YouTube links, use OG tag extraction via proxy
+      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(proxyUrl, { signal: controller.signal });
+      clearTimeout(timeout);
+      
+      if (!response.ok) return null;
+      
+      const html = await response.text();
+      
+      // Simple extraction - just look for og:property content=value
+      const extractMeta = (property) => {
+        // Match: og:title" content="value" or content="value" property="og:title
+        const pattern1 = new RegExp(`og:${property}["\']\\s+content=["\']([^"']+)["\']`, 'i');
+        let match = html.match(pattern1);
+        if (match) return match[1];
+        
+        const pattern2 = new RegExp(`content=["\']([^"']+)["\']\\s+property=["\']og:${property}["\']`, 'i');
+        match = html.match(pattern2);
+        if (match) return match[1];
+        
+        // Also try without og: prefix (for name attribute)
+        const pattern3 = new RegExp(`name=["\']${property}["\']\\s+content=["\']([^"']+)["\']`, 'i');
+        match = html.match(pattern3);
+        if (match) return match[1];
+        
+        return null;
+      };
+      
+      let title = extractMeta('title');
+      let description = extractMeta('description');
+      let image = extractMeta('image');
+      
+      // Fallback to title tag
+      if (!title) {
+        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+        title = titleMatch ? titleMatch[1] : '';
+      }
+      
+      return { 
+        title: (title || 'Link').substring(0, 100), 
+        description: (description || '').substring(0, 256), 
+        image 
+      };
+    } catch (error) {
+      console.error('[OG] Error:', error.message);
+      return null;
+    }
+  }
+
+  async createLinkEmbed(url, ogData) {
+    // This is handled on the background worker side for Bluesky API compatibility
+    return { url, ...ogData };
+  }
+
+  async detectAndShowLinkPreview(text) {
+    const preview = document.getElementById('bsky-link-preview');
+    if (!preview) return;
+    
+    const { url } = this.detectLinks(text);
+    
+    if (!url) {
+      preview.style.display = 'none';
+      return;
+    }
+    
+    // If we have a pending custom preview for this URL, use it instead of fetching
+    if (this.pendingLinkPreview && this.pendingLinkPreview.url === url) {
+      let html = '<div style="background: white; border-radius: 6px; padding: 0.5rem; border: 1px solid #ddd;">';
+      if (this.pendingLinkPreview.image) {
+        html += `<img src="${this.pendingLinkPreview.image}" style="max-width: 100%; max-height: 80px; border-radius: 4px; margin-bottom: 0.5rem; display: block;">`;
+      }
+      html += `<div style="font-weight: 600; font-size: 0.85rem; color: #333; margin-bottom: 0.25rem;">${this.pendingLinkPreview.title || 'Link'}</div>`;
+      html += `<div style="font-size: 0.75rem; color: #666; line-height: 1.3;">${this.pendingLinkPreview.description || ''}</div>`;
+      html += '</div>';
+      preview.innerHTML = html;
+      preview.style.display = 'block';
+      this.pendingLinkPreview = null; // Clear after using
+      return;
+    }
+    
+    // Show loading
+    preview.innerHTML = '<div style="color: #1e40af; font-size: 0.85rem; text-align: center; padding: 0.5rem;">Loading preview...</div>';
+    preview.style.display = 'block';
+    
+    try {
+      const ogData = await this.fetchOGData(url);
+      if (ogData) {
+        let html = '<div style="background: white; border-radius: 6px; padding: 0.5rem; border: 1px solid #ddd;">';
+        if (ogData.image) {
+          html += `<img src="${ogData.image}" style="max-width: 100%; max-height: 80px; border-radius: 4px; margin-bottom: 0.5rem; display: block;">`;
+        }
+        html += `<div style="font-weight: 600; font-size: 0.85rem; color: #333; margin-bottom: 0.25rem;">${ogData.title || 'Link'}</div>`;
+        html += `<div style="font-size: 0.75rem; color: #666; line-height: 1.3;">${ogData.description || ''}</div>`;
+        html += '</div>';
+        preview.innerHTML = html;
+      } else {
+        preview.innerHTML = '<div style="color: #6b7280; font-size: 0.85rem; text-align: center; padding: 0.5rem;">Could not load preview</div>';
+      }
+    } catch (error) {
+      console.error('[BlueskyIntegration] Error fetching link preview:', error);
+      preview.innerHTML = '<div style="color: #dc2626; font-size: 0.85rem; text-align: center; padding: 0.5rem;">Error loading preview</div>';
+    }
+  }
+
+  showMessage(text, type) {
+    const msgEl = document.getElementById('bluesky-message');
+    if (!msgEl) return;
+    msgEl.textContent = text;
+    msgEl.className = `bluesky-message ${type}`;
+    msgEl.style.display = 'block';
+    setTimeout(() => {
+      msgEl.style.display = 'none';
+    }, 3000);
+  }
+
+  sendToComposer(text, imageData = null, customLinkPreview = null) {
+    if (!this.session) {
+      this.showMessage('❌ Please login first', 'error');
+      return;
+    }
+    const textarea = document.getElementById('bsky-textarea');
+    if (!textarea) {
+      console.error('[BlueskyIntegration] textarea not found');
+      return;
+    }
+    
+    textarea.value = text;
+    textarea.focus();
+    
+    // Store custom link preview BEFORE dispatching input event so detectAndShowLinkPreview can use it
+    if (customLinkPreview) {
+      this.pendingLinkPreview = customLinkPreview;
+    }
+    
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // If image data is provided, show image preview in Bluesky
+    if (imageData) {
+      const previewDiv = document.getElementById('bsky-image-preview');
+      if (previewDiv) {
+        previewDiv.innerHTML = `<img src="${imageData}" style="max-width: 100%; height: auto; border-radius: 4px;">`;
+        previewDiv.style.display = 'block';
+        this.pendingImageData = imageData;
+      }
+    }
+  }
+
+  async handlePost(e) {
+    e.preventDefault();
+    const textarea = document.getElementById('bsky-textarea');
+    const postBtn = document.querySelector('button[type="submit"]');
+    
+    if (!this.session) {
+      this.showMessage('❌ Please login first', 'error');
+      return;
+    }
+
+    if (!textarea.value.trim()) {
+      this.showMessage('❌ Post cannot be empty', 'error');
+      return;
+    }
+
+    postBtn.disabled = true;
+
+    try {
+      // Get clean text (without URLs) and detect links
+      const { cleanText, url } = this.detectLinks(textarea.value);
+      const postText = url ? cleanText : textarea.value;
+
+      // Build post record
+      const postRecord = {
+        $type: 'app.bsky.feed.post',
+        text: postText,
+        created_at: new Date().toISOString(),
+        facets: []
+      };
+
+      // Build image embed if present
+      let imageEmbed = null;
+      if (this.pendingImageData) {
+        try {
+          // Fetch the image and convert to blob
+          const imageResponse = await fetch(this.pendingImageData);
+          const imageBlob = await imageResponse.blob();
+          
+          // Upload blob to Bluesky
+          const uploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${this.session.accessJwt}`,
+              'Content-Type': imageBlob.type,
+            },
+            body: imageBlob
+          });
+
+          if (uploadResponse.ok) {
+            const uploadData = await uploadResponse.json();
+            imageEmbed = {
+              $type: 'app.bsky.embed.images',
+              images: [{
+                image: uploadData.blob,
+                alt: 'User uploaded image'
+              }]
+            };
+            postRecord.embed = imageEmbed;
+          }
+        } catch (error) {
+          console.warn('Image upload failed, posting without image');
+        }
+      }
+
+      // Add link preview if URL detected
+      if (url && this.customLinkPreview && !imageEmbed) {
+        try {
+          const ogData = this.customLinkPreview;
+          const embedUrl = ogData.url || url;
+
+          let linkEmbed = {
+            $type: 'app.bsky.embed.external',
+            external: {
+              uri: embedUrl,
+              title: ogData.title || '',
+              description: ogData.description || '',
+            }
+          };
+
+          if (ogData.image) {
+            try {
+              const thumbResponse = await fetch(ogData.image);
+              const thumbBlob = await thumbResponse.blob();
+              const thumbUploadResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.uploadBlob', {
+                method: 'POST',
+                headers: {
+                  'Authorization': `Bearer ${this.session.accessJwt}`,
+                  'Content-Type': thumbBlob.type,
+                },
+                body: thumbBlob
+              });
+
+              if (thumbUploadResponse.ok) {
+                const thumbData = await thumbUploadResponse.json();
+                linkEmbed.external.thumb = thumbData.blob;
+              }
+            } catch (error) {
+              console.warn('Thumbnail upload failed, posting without thumb');
+            }
+          }
+
+          postRecord.embed = linkEmbed;
+        } catch (error) {
+          console.error('Link preview error:', error);
+        }
+      }
+
+      // Post to Bluesky
+      const postResponse = await fetch('https://bsky.social/xrpc/com.atproto.repo.createRecord', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${this.session.accessJwt}`,
+        },
+        body: JSON.stringify({
+          repo: this.session.did,
+          collection: 'app.bsky.feed.post',
+          record: postRecord,
+        }),
+      });
+
+      if (!postResponse.ok) {
+        const error = await postResponse.json();
+        throw new Error(error.error_description || 'Post failed');
+      }
+
+      this.showMessage('✅ Posted to Bluesky!', 'success');
+      textarea.value = '';
+      document.getElementById('bsky-char-count').textContent = '0';
+      this.pendingImageData = null;
+      const preview = document.getElementById('bsky-image-preview');
+      if (preview) preview.style.display = 'none';
+      
+      postBtn.disabled = false;
+    } catch (error) {
+      console.error('Post failed:', error);
+      this.showMessage(`❌ ${error.message}`, 'error');
+      postBtn.disabled = false;
+    }
+  }
+
+  async fetchPostAnalytics(uri) {
+    // Placeholder for future analytics
+    return { likes: 0, reposts: 0, replies: 0, quotes: 0 };
+  }
+
+  async fetchUserLists() {
+    // Placeholder for future lists functionality
+    return [];
+  }
+
+  openLinkPreviewModal(url = null, preview = null) {
+    const modal = document.getElementById('link-preview-modal');
+    if (!modal) return;
+
+    if (!url) {
+      const textarea = document.getElementById('bsky-textarea');
+      const { url: detectedUrl } = this.detectLinks(textarea.value);
+      url = detectedUrl;
+    }
+
+    if (!url) {
+      this.showMessage('No link found in post', 'error');
+      return;
+    }
+
+    modal.style.display = 'flex';
+    document.getElementById('link-preview-url').textContent = url;
+    
+    if (preview && preview.image) {
+      document.getElementById('link-preview-image').src = preview.image;
+      document.getElementById('link-preview-image').style.display = 'block';
+    } else {
+      document.getElementById('link-preview-image').style.display = 'none';
+    }
+    
+    document.getElementById('link-preview-title').value = preview?.title || '';
+    document.getElementById('link-preview-desc').value = preview?.description || '';
+  }
+
+  saveLinkPreview() {
+    const title = document.getElementById('link-preview-title').value;
+    const description = document.getElementById('link-preview-desc').value;
+    const url = document.getElementById('link-preview-url').textContent;
+    const image = document.getElementById('link-preview-image').src;
+
+    this.customLinkPreview = {
+      url,
+      title,
+      description,
+      image: image || null
+    };
+
+    document.getElementById('link-preview-modal').style.display = 'none';
+    this.detectAndShowLinkPreview(document.getElementById('bsky-textarea').value);
   }
 }
 
@@ -2047,1058 +2756,6 @@ class NotesDBStorage {
       localStorage.setItem(this.storageKey, JSON.stringify(filtered));
     } catch (error) {
       console.error('[Storage] localStorage error:', error);
-    }
-  }
-}
-
-// Bluesky Integration
-class BlueskyIntegration {
-  constructor() {
-    this.pdsUrl = 'https://bsky.social';
-    this.session = null;
-    this.pendingImageData = null;
-    this.pendingLinkUrl = null;
-    this.customLinkPreview = null; // For Pro feature: custom link preview data
-    this.init();
-  }
-
-  async init() {
-    await this.loadSession();
-    this.setupEventListeners();
-    this.updateUI();
-  }
-
-  loadSession() {
-    return new Promise((resolve) => {
-      // Try chrome.storage first
-      if (chrome.storage && chrome.storage.local) {
-        chrome.storage.local.get(['blueskySession'], (result) => {
-          if (result.blueskySession) {
-            this.session = result.blueskySession;
-            resolve(this.session);
-            return;
-          }
-
-          // If not in chrome.storage, try localStorage
-          try {
-            const sessionStr = localStorage.getItem('blueskySession');
-            if (sessionStr) {
-              this.session = JSON.parse(sessionStr);
-              resolve(this.session);
-              return;
-            }
-          } catch (error) {
-            console.warn('[Bluesky] localStorage error:', error);
-          }
-
-          resolve(null);
-        });
-      } else {
-        // If chrome.storage not available, use localStorage
-        try {
-          const sessionStr = localStorage.getItem('blueskySession');
-          if (sessionStr) {
-            this.session = JSON.parse(sessionStr);
-          } else {
-          }
-        } catch (error) {
-          console.warn('[Bluesky] localStorage error:', error);
-        }
-        resolve(this.session || null);
-      }
-    });
-  }
-
-  setupEventListeners() {
-    const loginForm = document.getElementById('bluesky-login-form');
-    const composerForm = document.getElementById('bluesky-composer-form');
-    const textarea = document.getElementById('bsky-textarea');
-    const logoutBtn = document.getElementById('bsky-logout-btn');
-    const removeImageBtn = document.getElementById('bsky-remove-image-btn');
-
-    if (loginForm) {
-      loginForm.addEventListener('submit', (e) => this.handleLogin(e));
-    }
-
-    if (composerForm) {
-      composerForm.addEventListener('submit', (e) => this.handlePost(e));
-    }
-
-    if (textarea) {
-      textarea.addEventListener('input', () => {
-        document.getElementById('bsky-char-count').textContent = textarea.value.length;
-        const remaining = 300 - textarea.value.length;
-        const countEl = document.getElementById('bsky-char-count').parentElement;
-        countEl.classList.toggle('warning', remaining < 50 && remaining >= 0);
-        countEl.classList.toggle('error', remaining < 0);
-        
-        // Real-time link detection
-        this.detectAndShowLinkPreview(textarea.value);
-      });
-    }
-
-    if (logoutBtn) {
-      logoutBtn.addEventListener('click', () => {
-        if (confirm('Logout from Bluesky?')) {
-          chrome.storage.local.remove('blueskySession');
-          this.session = null;
-          this.updateUI();
-        }
-      });
-    }
-
-    if (removeImageBtn) {
-      removeImageBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        this.pendingImageData = null;
-        const preview = document.getElementById('bsky-image-preview');
-        if (preview) preview.style.display = 'none';
-      });
-    }
-
-    // Link preview modal handlers (Pro feature)
-    const linkSaveBtn = document.getElementById('link-preview-save-btn');
-    const linkCancelBtn = document.getElementById('link-preview-cancel-btn');
-    const linkModal = document.getElementById('link-preview-modal');
-
-    if (linkSaveBtn) {
-      linkSaveBtn.addEventListener('click', () => this.saveLinkPreview());
-    }
-
-    if (linkCancelBtn) {
-      linkCancelBtn.addEventListener('click', () => {
-        if (linkModal) linkModal.style.display = 'none';
-      });
-    }
-
-    if (linkModal) {
-      linkModal.addEventListener('click', (e) => {
-        // Only close if clicking the exact background, not the modal content
-        if (e.target === linkModal) {
-          linkModal.style.display = 'none';
-        }
-      });
-      
-      // Close on Escape key
-      linkModal.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape') {
-          linkModal.style.display = 'none';
-        }
-      });
-    }
-  }
-
-  updateUI() {
-    const loginContainer = document.getElementById('bluesky-login-container');
-    const composerContainer = document.getElementById('bluesky-composer-container');
-
-    if (this.session) {
-      loginContainer.style.display = 'none';
-      composerContainer.style.display = 'block';
-      const initials = this.session.handle.charAt(0).toUpperCase();
-      document.getElementById('bsky-avatar').textContent = initials;
-      document.getElementById('bsky-handle').textContent = `@${this.session.handle}`;
-      document.getElementById('bsky-textarea').value = '';
-      document.getElementById('bsky-char-count').textContent = '0';
-    } else {
-      loginContainer.style.display = 'block';
-      composerContainer.style.display = 'none';
-    }
-  }
-
-  async handleLogin(e) {
-    e.preventDefault();
-    const username = document.getElementById('bsky-username').value;
-    const password = document.getElementById('bsky-password').value;
-
-    try {
-      const response = await fetch(`${this.pdsUrl}/xrpc/com.atproto.server.createSession`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ identifier: username, password })
-      });
-
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Login failed');
-      }
-
-      const data = await response.json();
-      const sessionData = {
-        accessJwt: data.accessJwt,
-        refreshJwt: data.refreshJwt,
-        did: data.did,
-        handle: data.handle,
-        timestamp: Date.now()
-      };
-
-      // Save to both chrome.storage and localStorage
-      try {
-        chrome.storage.local.set({ blueskySession: sessionData });
-        // Also sync to chrome.storage.sync for background worker to access when posting
-        chrome.storage.sync.set({ blueskySession: sessionData });
-      } catch (error) {
-        console.warn('[Bluesky] chrome.storage failed:', error);
-      }
-
-      try {
-        localStorage.setItem('blueskySession', JSON.stringify(sessionData));
-      } catch (error) {
-        console.warn('[Bluesky] localStorage failed:', error);
-      }
-
-      this.session = sessionData;
-
-      this.showMessage('✅ Logged in!', 'success');
-      this.updateUI();
-    } catch (error) {
-      this.showMessage(`❌ ${error.message}`, 'error');
-    }
-  }
-
-  detectLinks(text) {
-    // Match URLs with or without http/https prefix
-    // Supports: https://example.com, http://example.com, example.com, www.example.com
-    const urlRegex = /(?:https?:\/\/)?(?:www\.)?[a-zA-Z0-9][a-zA-Z0-9-]*(?:\.[a-zA-Z]{2,})+(?:\/[^\s]*)?/g;
-    const match = urlRegex.exec(text);
-    
-    if (!match) return { cleanText: text, url: null };
-    
-    let url = match[0];
-    
-    // Add https:// if no protocol specified
-    if (!url.match(/^https?:\/\//)) {
-      url = 'https://' + url;
-    }
-    
-    // Remove URL from text and trim extra whitespace
-    const originalUrl = match[0];
-    const cleanText = text.substring(0, match.index) + text.substring(match.index + originalUrl.length);
-    
-    return { cleanText: cleanText.trim(), url };
-  }
-
-  async fetchOGData(url) {
-    try {
-      // Check if it's a YouTube link - use oEmbed API instead of OG scraping
-      const youtubeMatch = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/);
-      if (youtubeMatch) {
-        const videoId = youtubeMatch[1];
-        
-        try {
-          // Use YouTube oEmbed API (no authentication needed)
-          const oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`;
-          const oembedResponse = await fetch(oembedUrl);
-          
-          if (oembedResponse.ok) {
-            const oembedData = await oembedResponse.json();
-            
-            return {
-              title: (oembedData.title || 'Video').substring(0, 100),
-              description: (oembedData.author_name || 'YouTube').substring(0, 256),
-              image: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
-            };
-          }
-        } catch (e) {
-          // Fall back to constructed thumbnail
-          return {
-            title: 'Video'.substring(0, 100),
-            description: 'YouTube'.substring(0, 256),
-            image: `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`
-          };
-        }
-      }
-
-      // For non-YouTube links, use OG tag extraction via proxy
-      const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
-      
-      const response = await fetch(proxyUrl, { signal: controller.signal });
-      clearTimeout(timeout);
-      
-      if (!response.ok) return null;
-      
-      const html = await response.text();
-      
-      // Simple extraction - just look for og:property content=value
-      const extractMeta = (property) => {
-        // Match: og:title" content="value" or content="value" property="og:title
-        const pattern1 = new RegExp(`og:${property}["\']\\s+content=["\']([^"']+)["\']`, 'i');
-        let match = html.match(pattern1);
-        if (match) return match[1];
-        
-        const pattern2 = new RegExp(`content=["\']([^"']+)["\']\\s+property=["\']og:${property}["\']`, 'i');
-        match = html.match(pattern2);
-        if (match) return match[1];
-        
-        // Also try without og: prefix (for name attribute)
-        const pattern3 = new RegExp(`name=["\']${property}["\']\\s+content=["\']([^"']+)["\']`, 'i');
-        match = html.match(pattern3);
-        if (match) return match[1];
-        
-        return null;
-      };
-      
-      let title = extractMeta('title');
-      let description = extractMeta('description');
-      let image = extractMeta('image');
-      
-      // Fallback to title tag
-      if (!title) {
-        const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-        title = titleMatch ? titleMatch[1] : '';
-      }
-      
-      return { 
-        title: (title || 'Link').substring(0, 100), 
-        description: (description || '').substring(0, 256), 
-        image 
-      };
-    } catch (error) {
-      console.error('[OG] Error:', error.message);
-      return null;
-    }
-  }
-
-  async createLinkEmbed(url, ogData) {
-    // Use custom preview data if Pro user edited it
-    const previewData = this.customLinkPreview || ogData;
-    
-    const embed = {
-      $type: 'app.bsky.embed.external',
-      external: {
-        uri: url,
-        title: previewData?.title || '',
-        description: previewData?.description || ''
-      }
-    };
-
-    // Use custom image if provided, otherwise use OG image
-    const imageUrl = this.customLinkPreview?.customImage || ogData?.image;
-    
-    if (imageUrl) {
-      try {
-        // Use CORS proxy for the image as well
-        const proxyImageUrl = 'https://corsproxy.io/?' + encodeURIComponent(imageUrl);
-        const imgResponse = await fetch(proxyImageUrl);
-        const blob = await imgResponse.blob();
-        
-        // Upload image as blob
-        const uploadResponse = await fetch(`${this.pdsUrl}/xrpc/com.atproto.repo.uploadBlob`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.session.accessJwt}`,
-            'Content-Type': blob.type
-          },
-          body: blob
-        });
-
-        if (uploadResponse.ok) {
-          const blobData = await uploadResponse.json();
-          embed.external.thumb = blobData.blob;
-        }
-      } catch (error) {
-        console.error('[OG] Failed to upload OG image:', error);
-      }
-    }
-
-    return embed;
-  }
-
-  showLinkPreview(url, ogData) {
-    const preview = document.getElementById('bsky-link-preview');
-    const display = document.getElementById('link-preview-display');
-    
-    if (!preview || !display) return;
-    
-    this.pendingLinkUrl = url;
-    
-    // Display preview with Edit and Remove buttons
-    let html = '';
-    if (ogData?.image) {
-      html += `<img id="link-preview-thumb" src="${ogData.image}" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem;">`;
-    }
-    html += `<div id="link-preview-title" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; color: #333;">${ogData?.title || 'Link'}</div>`;
-    html += `<div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3; margin-bottom: 0.5rem;">${ogData?.description || url}</div>`;
-    html += `<div style="display: flex; gap: 0.5rem;">`;
-    html += `<button type="button" id="bsky-link-edit-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✏️ Edit</button>`;
-    html += `<button type="button" id="bsky-link-remove-btn" style="padding: 0.4rem 0.8rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✕ Remove</button>`;
-    html += `</div>`;
-    
-    display.innerHTML = html;
-    preview.style.display = 'block';
-    
-    // Store OG data for potential editing (include url and image)
-    this.customLinkPreview = { 
-      url,
-      title: ogData?.title || '',
-      description: ogData?.description || '',
-      image: ogData?.image
-    };
-    
-    // Add event listeners with setTimeout to ensure elements exist
-    setTimeout(() => {
-      const editBtn = document.getElementById('bsky-link-edit-btn');
-      const removeBtn = document.getElementById('bsky-link-remove-btn');
-      
-      if (editBtn) {
-        editBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (!window.licenseManager.canUseFeature('advancedPreviews')) {
-            this.showMessage('Upgrade to Pro to edit link previews', 'info');
-            document.getElementById('pro-modal').classList.add('active');
-            return;
-          }
-          this.openLinkPreviewModal(url, this.customLinkPreview);
-        });
-      }
-      
-      if (removeBtn) {
-        removeBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this.customLinkPreview = null;
-          if (preview) preview.style.display = 'none';
-        });
-      }
-    }, 0);
-  }
-
-  showLinkPreviewFromDetected(url, ogData) {
-    // Same as showLinkPreview but used from link detection
-    this.showLinkPreview(url, ogData);
-  }
-
-  // Generic version for different preview elements
-  showLinkPreviewInElement(url, ogData, previewElementId) {
-    const preview = document.getElementById(previewElementId);
-    
-    if (!preview) return;
-    
-    // Display preview
-    let html = '';
-    if (ogData?.image) {
-      html += `<img src="${ogData.image}" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem;">`;
-    }
-    html += `<div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; color: #333;">${ogData?.title || 'Link'}</div>`;
-    html += `<div style="font-size: 0.8rem; color: #666; line-height: 1.3;">${ogData?.description || url}</div>`;
-    
-    preview.innerHTML = html;
-    preview.style.display = 'block';
-  }
-
-  async detectAndShowLinkPreview(text) {
-    const { url } = this.detectLinks(text);
-    const preview = document.getElementById('bsky-link-preview');
-    const display = document.getElementById('link-preview-display');
-    
-    if (!url) {
-      if (preview) preview.style.display = 'none';
-      this.customLinkPreview = null;
-      return;
-    }
-    
-    // Check if already have a preview for this URL
-    if (this.customLinkPreview && this.customLinkPreview.url === url) {
-      // Already have a preview, show it
-      if (preview) preview.style.display = 'block';
-      return;
-    }
-    
-    // Show option to create preview (don't auto-create)
-    const html = `
-      <div style="padding: 0.75rem; background: #f0f9ff; border: 1px solid #bfdbfe; border-radius: 4px; display: flex; gap: 0.5rem; align-items: center;">
-        <span style="font-size: 0.85rem; color: #1e40af;">Link detected</span>
-        <button type="button" id="bsky-link-preview-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">Add Preview</button>
-      </div>
-    `;
-    
-    if (display) display.innerHTML = html;
-    if (preview) preview.style.display = 'block';
-    
-    // Add click handler for preview button
-    setTimeout(() => {
-      const btn = document.getElementById('bsky-link-preview-btn');
-      if (btn) {
-        btn.addEventListener('click', async (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          if (display) display.innerHTML = '<div style="color: #9ca3af; font-size: 0.85rem;">Loading preview...</div>';
-          
-          try {
-            const ogData = await this.fetchOGData(url);
-            if (ogData) {
-              this.showLinkPreviewFromDetected(url, ogData);
-            } else {
-              if (display) display.innerHTML = '<div style="color: #6b7280; font-size: 0.85rem;">Could not load preview</div>';
-            }
-          } catch (error) {
-            if (display) display.innerHTML = '<div style="color: #dc2626; font-size: 0.85rem;">Error loading preview</div>';
-          }
-        });
-      }
-    }, 0);
-  }
-
-  openLinkPreviewModal(url = null, initialPreview = null) {
-    // Support both direct post mode (no params) and schedule mode (url + preview)
-    if (!url && !this.customLinkPreview) return;
-    
-    const preview = initialPreview || this.customLinkPreview || {};
-    
-    // Store context for saving (either direct post or scheduled)
-    this.linkPreviewModalContext = {
-      url: url,
-      isScheduled: !!url,
-      preview: preview
-    };
-    
-    document.getElementById('link-preview-title-input').value = preview.title || '';
-    document.getElementById('link-preview-desc-input').value = preview.description || '';
-    document.getElementById('link-preview-modal').style.display = 'flex';
-  }
-
-  saveLinkPreview() {
-    const context = this.linkPreviewModalContext || {};
-    const preview = {
-      title: document.getElementById('link-preview-title-input').value,
-      description: document.getElementById('link-preview-desc-input').value
-    };
-    
-    // Include URL and image if available (preserve from original preview)
-    if (context.url) {
-      preview.url = context.url;
-    }
-    if (context.preview && context.preview.image) {
-      preview.image = context.preview.image;
-    }
-    
-    // Check if there's already a different image embed (only warn if adding another embed)
-    const editor = document.getElementById('editor-content');
-    const hasImage = editor && editor.innerHTML && editor.innerHTML.includes('<img');
-    
-    if (hasImage) {
-      const confirmed = confirm('This post already has an image embed. Bluesky only allows one embed per post.\n\nWould you like to replace the image with this link preview?');
-      if (!confirmed) return;
-    }
-    
-    if (context.isScheduled && this.currentNote) {
-      // Saving for scheduled post
-      this.currentNote.customLinkPreview = preview;
-      // Update the schedule preview display
-      this.updateSchedulePreviewDisplay(preview);
-      this.showMessage('✅ Link preview updated', 'success');
-    } else {
-      // Saving for direct post
-      this.customLinkPreview = preview;
-      
-      // Update display
-      document.getElementById('link-preview-title').textContent = preview.title;
-      document.getElementById('link-preview-desc').textContent = preview.description;
-      
-      this.showMessage('✅ Link preview updated', 'success');
-    }
-    
-    document.getElementById('link-preview-modal').style.display = 'none';
-  }
-
-  updateSchedulePreviewDisplay(preview) {
-    const previewDiv = document.getElementById('schedule-link-preview');
-    if (!previewDiv) return;
-    
-    previewDiv.innerHTML = `
-      <div style="padding: 0.75rem; background: white; border-radius: 4px;">
-        ${preview.image ? `<img src="${preview.image}" style="width: 100%; height: 120px; object-fit: cover; border-radius: 4px; margin-bottom: 0.5rem;">` : ''}
-        <div style="font-weight: 500; color: #333; margin-bottom: 0.25rem; font-size: 0.9rem;">${preview.title || 'No title'}</div>
-        <div style="font-size: 0.8rem; color: #6b7280; line-height: 1.3;">${preview.description || 'No description'}</div>
-      </div>
-    `;
-  }
-
-  editEditorLinkPreview() {
-    if (!this.currentNote || !this.currentNote.customLinkPreview) return;
-    
-    if (!window.licenseManager.canUseFeature('advancedPreviews')) {
-      this.showMessage('Upgrade to Pro to edit link previews', 'info');
-      document.getElementById('pro-modal').classList.add('active');
-      return;
-    }
-    
-    const preview = this.currentNote.customLinkPreview;
-    this.openLinkPreviewModal(preview.url, preview);
-  }
-
-  handlePost(e) {
-    e.preventDefault();
-    const content = document.getElementById('bsky-textarea').value.trim();
-
-    if (!content) {
-      this.showMessage('❌ Please write something!', 'error');
-      return;
-    }
-
-    const postBtn = document.getElementById('bsky-post-btn');
-    postBtn.disabled = true;
-
-    // Detect links first (so we can check length of actual post text, not including URL)
-    const { cleanText, url } = this.detectLinks(content);
-
-    // Use cleanText (URL removed). Don't include URL in text if we're making an embed
-    const finalText = cleanText.trim();
-
-    // Check character limit
-    if (finalText.length > 300) {
-      this.showMessage('❌ Post is too long!', 'error');
-      postBtn.disabled = false;
-      return;
-    }
-
-    // Either need text OR a link/image
-    if (!finalText && !url && !this.pendingImageData) {
-      this.showMessage('❌ Please write something or add a link/image!', 'error');
-      postBtn.disabled = false;
-      return;
-    }
-
-    const postRecord = {
-      $type: 'app.bsky.feed.post',
-      text: finalText,
-      createdAt: new Date().toISOString()
-    };
-
-    // If there's a URL, fetch OG data and create embed
-    const handlePostLogic = async () => {
-      if (url && !this.pendingImageData) {
-        try {
-          // If we already have customLinkPreview (user edited it), use that directly
-          let ogData = this.customLinkPreview;
-          
-          // If no custom preview exists, fetch OG data fresh
-          if (!ogData) {
-            ogData = await this.fetchOGData(url);
-            if (ogData) {
-              // Show link preview for user to potentially customize
-              this.showLinkPreview(url, ogData);
-            }
-          }
-          
-          // Create embed using stored custom preview
-          if (ogData) {
-            const linkEmbed = await this.createLinkEmbed(url, ogData);
-            postRecord.embed = linkEmbed;
-          }
-        } catch (error) {
-          console.error('[Post] Error fetching OG data:', error);
-        }
-      }
-
-      // If there's an image, upload it first
-      if (this.pendingImageData) {
-        this.uploadImageFromDataUrl(this.pendingImageData)
-          .then(imageBlob => {
-            if (imageBlob) {
-              postRecord.embed = {
-                $type: 'app.bsky.embed.images',
-                images: [{ image: imageBlob, alt: '' }]
-              };
-            }
-            return this.createPost(postRecord, postBtn);
-          })
-          .catch(error => {
-            console.error('[Post] Image upload failed:', error);
-            this.showMessage(`❌ Image upload failed: ${error.message}`, 'error');
-            postBtn.disabled = false;
-          });
-      } else {
-        this.createPost(postRecord, postBtn).catch(error => {
-          console.error('[Post] Post failed:', error);
-        });
-      }
-    };
-
-    // Execute the post logic
-    handlePostLogic();
-  }
-
-  uploadImageFromDataUrl(dataUrl) {
-    return new Promise((resolve, reject) => {
-      try {
-        // Convert data URL directly to blob without fetch (avoids CSP issues)
-        const arr = dataUrl.split(',');
-        const mime = arr[0].match(/:(.*?);/)[1];
-        const bstr = atob(arr[1]);
-        const n = bstr.length;
-        const u8arr = new Uint8Array(n);
-        
-        for (let i = 0; i < n; i++) {
-          u8arr[i] = bstr.charCodeAt(i);
-        }
-        
-        const blob = new Blob([u8arr], { type: mime });
-        
-        // Upload to Bluesky
-        fetch(`${this.pdsUrl}/xrpc/com.atproto.repo.uploadBlob`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.session.accessJwt}`,
-            'Content-Type': blob.type || 'image/png'
-          },
-          body: blob
-        }).then(response => {
-          if (!response.ok) {
-            return response.json().then(error => {
-              throw new Error(error.message || 'Upload failed');
-            });
-          }
-          return response.json();
-        }).then(data => {
-          resolve(data.blob);
-        }).catch(error => {
-          console.error('[Post] Upload error:', error);
-          reject(error);
-        });
-      } catch (error) {
-        console.error('[Post] DataURL conversion error:', error);
-        reject(error);
-      }
-    });
-  }
-
-  async createPost(postRecord, postBtn) {
-    // Refresh token before posting
-    if (this.session && this.session.refreshJwt) {
-      try {
-        const refreshResponse = await fetch('https://bsky.social/xrpc/com.atproto.server.refreshSession', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${this.session.refreshJwt}`,
-          },
-        });
-
-
-        if (refreshResponse.ok) {
-          const newSession = await refreshResponse.json();
-          this.session = {
-            did: this.session.did,
-            handle: this.session.handle,
-            accessJwt: newSession.accessJwt,
-            refreshJwt: newSession.refreshJwt || this.session.refreshJwt,
-          };
-          
-          // Save the refreshed session
-          await new Promise((resolve) => {
-            chrome.storage.local.set({ 'blueskySession': this.session }, () => {
-              // Also sync to chrome.storage.sync for background worker
-              chrome.storage.sync.set({ 'blueskySession': this.session }, () => {
-                resolve();
-              });
-            });
-          });
-        } else {
-          const errorData = await refreshResponse.json().catch(() => ({}));
-          console.warn('[Post] Token refresh failed:', refreshResponse.status, errorData);
-        }
-      } catch (refreshError) {
-        console.error('[Post] Error refreshing token:', refreshError.message);
-      }
-    } else {
-    }
-
-    // Proceed with posting
-    fetch(`${this.pdsUrl}/xrpc/com.atproto.repo.createRecord`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${this.session.accessJwt}`
-      },
-      body: JSON.stringify({
-        repo: this.session.did,
-        collection: 'app.bsky.feed.post',
-        record: postRecord
-      })
-    }).then(response => {
-      if (!response.ok) {
-        return response.json().then(error => {
-          throw new Error(error.message || 'Failed to post');
-        });
-      }
-      return response.json();
-    }).then(data => {
-      // Capture the post URI for analytics
-      if (data && data.uri && this.currentNote) {
-        this.currentNote.postUri = data.uri;
-        this.currentNote.postedAt = Date.now();
-        this.db.saveNote(this.currentNote);
-      }
-      
-      this.showMessage('✅ Posted!', 'success');
-      document.getElementById('bsky-textarea').value = '';
-      document.getElementById('bsky-char-count').textContent = '0';
-      
-      // Clear image
-      this.pendingImageData = null;
-      const preview = document.getElementById('bsky-image-preview');
-      if (preview) preview.style.display = 'none';
-      
-      // Clear link preview
-      const linkPreview = document.getElementById('bsky-link-preview');
-      if (linkPreview) linkPreview.style.display = 'none';
-      this.customLinkPreview = null;
-      this.pendingLinkUrl = null;
-      
-      postBtn.disabled = false;
-    }).catch(error => {
-      console.error('Post failed:', error);
-      this.showMessage(`❌ ${error.message}`, 'error');
-      postBtn.disabled = false;
-    });
-  }
-
-  showMessage(text, type) {
-    const msgEl = document.getElementById('bluesky-message');
-    msgEl.textContent = text;
-    msgEl.className = `bluesky-message ${type}`;
-    msgEl.style.display = 'block';
-    setTimeout(() => {
-      msgEl.style.display = 'none';
-    }, 3000);
-  }
-
-  showConfirmModal(title, message) {
-    return new Promise((resolve) => {
-      // Create modal overlay
-      const overlay = document.createElement('div');
-      overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
-      
-      // Create modal content
-      const modal = document.createElement('div');
-      modal.style.cssText = 'background: white; border-radius: 8px; padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);';
-      
-      // Title
-      const titleEl = document.createElement('h2');
-      titleEl.textContent = title;
-      titleEl.style.cssText = 'margin: 0 0 12px 0; font-size: 18px; color: #1f2937;';
-      
-      // Message
-      const msgEl = document.createElement('p');
-      msgEl.textContent = message;
-      msgEl.style.cssText = 'margin: 0 0 20px 0; font-size: 14px; color: #6b7280; line-height: 1.5;';
-      
-      // Buttons container
-      const buttonsDiv = document.createElement('div');
-      buttonsDiv.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end;';
-      
-      // Cancel button
-      const cancelBtn = document.createElement('button');
-      cancelBtn.textContent = 'Cancel';
-      cancelBtn.style.cssText = 'padding: 8px 16px; border: 1px solid #e5e7eb; border-radius: 4px; background: white; color: #6b7280; cursor: pointer; font-weight: 500;';
-      cancelBtn.onclick = () => {
-        overlay.remove();
-        resolve(false);
-      };
-      
-      // Confirm button
-      const confirmBtn = document.createElement('button');
-      confirmBtn.textContent = 'Delete All';
-      confirmBtn.style.cssText = 'padding: 8px 16px; border: none; border-radius: 4px; background: #dc2626; color: white; cursor: pointer; font-weight: 500;';
-      confirmBtn.onclick = () => {
-        overlay.remove();
-        resolve(true);
-      };
-      
-      buttonsDiv.appendChild(cancelBtn);
-      buttonsDiv.appendChild(confirmBtn);
-      
-      modal.appendChild(titleEl);
-      modal.appendChild(msgEl);
-      modal.appendChild(buttonsDiv);
-      overlay.appendChild(modal);
-      
-      document.body.appendChild(overlay);
-    });
-  }
-
-  sendToComposer(text, imageData = null, customLinkPreview = null) {
-    if (!this.session) {
-      this.showMessage('❌ Please login first', 'error');
-      return;
-    }
-    const textarea = document.getElementById('bsky-textarea');
-    textarea.value = text;
-    textarea.dispatchEvent(new Event('input'));
-    
-    // Store custom link preview if provided
-    if (customLinkPreview) {
-      this.customLinkPreview = customLinkPreview;
-      // Display the preview
-      const preview = document.getElementById('bsky-link-preview');
-      const display = document.getElementById('link-preview-display');
-      if (preview && display) {
-        let html = '';
-        if (customLinkPreview.image) {
-          html += `<img id="link-preview-thumb" src="${customLinkPreview.image}" style="max-width: 100%; max-height: 100px; border-radius: 4px; margin-bottom: 0.5rem;">`;
-        }
-        html += `<div id="link-preview-title" style="font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; color: #333;">${customLinkPreview.title || 'Link'}</div>`;
-        html += `<div id="link-preview-desc" style="font-size: 0.8rem; color: #666; line-height: 1.3; margin-bottom: 0.5rem;">${customLinkPreview.description || customLinkPreview.url}</div>`;
-        html += `<div style="display: flex; gap: 0.5rem;">`;
-        html += `<button type="button" id="bsky-link-edit-btn" style="padding: 0.4rem 0.8rem; background: #0284c7; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✏️ Edit</button>`;
-        html += `<button type="button" id="bsky-link-remove-btn" style="padding: 0.4rem 0.8rem; background: #dc2626; color: white; border: none; border-radius: 4px; font-size: 0.8rem; cursor: pointer;">✕ Remove</button>`;
-        html += `</div>`;
-        
-        display.innerHTML = html;
-        preview.style.display = 'block';
-        
-        // Add event listeners
-        setTimeout(() => {
-          const editBtn = document.getElementById('bsky-link-edit-btn');
-          const removeBtn = document.getElementById('bsky-link-remove-btn');
-          
-          if (editBtn) {
-            editBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              if (!window.licenseManager.canUseFeature('advancedPreviews')) {
-                this.showMessage('Upgrade to Pro to edit link previews', 'info');
-                document.getElementById('pro-modal').classList.add('active');
-                return;
-              }
-              this.openLinkPreviewModal(customLinkPreview.url, this.customLinkPreview);
-            });
-          }
-          
-          if (removeBtn) {
-            removeBtn.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              this.customLinkPreview = null;
-              preview.style.display = 'none';
-            });
-          }
-        }, 0);
-      }
-    }
-    
-    // If image data is provided, show image preview in Bluesky
-    if (imageData) {
-      const previewDiv = document.getElementById('bsky-image-preview');
-      const previewImg = document.getElementById('bsky-preview-img');
-      
-      if (previewDiv && previewImg) {
-        previewImg.src = imageData;
-        previewDiv.style.display = 'block';
-        
-        // Store the image data URL for posting
-        this.pendingImageData = imageData;
-      }
-    }
-  }
-
-  async fetchPostAnalytics(postUri) {
-    if (!this.session || !postUri) return null;
-    
-    try {
-      // Extract the post author (DID) and rkey from the URI
-      // URI format: at://did:plc:xxx/app.bsky.feed.post/xxx
-      const parts = postUri.split('/');
-      const rkey = parts[parts.length - 1];
-      
-      // Fetch the post to get engagement metrics from the feed
-      const response = await fetch(`https://bsky.social/xrpc/app.bsky.feed.getPostThread?uri=${encodeURIComponent(postUri)}`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.session.accessJwt}`
-        }
-      });
-      
-      if (!response.ok) {
-        console.error('[Analytics] Failed to fetch post thread:', response.status);
-        return null;
-      }
-      
-      const data = await response.json();
-      const post = data.thread?.post;
-      
-      if (!post) return null;
-      
-      // Extract engagement metrics
-      return {
-        likes: post.likeCount || 0,
-        reposts: post.repostCount || 0,
-        replies: post.replyCount || 0,
-        quotes: post.quoteCount || 0
-      };
-    } catch (error) {
-      console.error('[Analytics] Error fetching analytics:', error);
-      return null;
-    }
-  }
-
-  async fetchUserLists() {
-    if (!this.session) return null;
-    
-    try {
-      // Fetch all lists the user created
-      const response = await fetch(`https://bsky.social/xrpc/app.bsky.graph.getLists?actor=${this.session.did}&limit=100`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.session.accessJwt}`
-        }
-      });
-      
-      if (!response.ok) {
-        console.error('[Lists] Failed to fetch lists:', response.status);
-        return null;
-      }
-      
-      const data = await response.json();
-      
-      if (!data.lists) return null;
-      
-      // Return list info with URIs for opening
-      return data.lists.map(list => ({
-        uri: list.uri,
-        name: list.name,
-        description: list.description || '',
-        avatar: list.avatar,
-        creator: list.creator.handle,
-        listItemCount: list.listItemCount || 0,
-        indexedAt: list.indexedAt
-      }));
-    } catch (error) {
-      console.error('[Lists] Error fetching lists:', error);
-      return null;
-    }
-  }
-
-  async fetchListMembers(listUri) {
-    if (!this.session || !listUri) return null;
-    
-    try {
-      // Fetch members of a specific list
-      const response = await fetch(`https://bsky.social/xrpc/app.bsky.graph.getList?list=${encodeURIComponent(listUri)}&limit=100`, {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${this.session.accessJwt}`
-        }
-      });
-      
-      if (!response.ok) {
-        console.error('[Lists] Failed to fetch list members:', response.status);
-        return null;
-      }
-      
-      const data = await response.json();
-      
-      if (!data.items) return null;
-      
-      // Return member DIDs for tracking
-      return data.items.map(item => item.subject.did);
-    } catch (error) {
-      console.error('[Lists] Error fetching list members:', error);
-      return null;
     }
   }
 }

@@ -10,12 +10,16 @@ window.addEventListener('unhandledrejection', (event) => {
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
-  if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
+  if (typeof NotesWorkspace !== 'undefined') {
     window.licenseManager = new LicenseManager();
     await window.licenseManager.loadLicense();
     window.workspace = new NotesWorkspace();
     await window.workspace.init();
-    window.bluesky = new BlueskyIntegration();
+    
+    // Create Bluesky integration instance
+    if (typeof BlueskyIntegration !== 'undefined') {
+      window.bluesky = new BlueskyIntegration();
+    }
     
     // Setup Pro Settings modal
     setupProModal();
@@ -26,22 +30,24 @@ document.addEventListener('DOMContentLoaded', async () => {
       // Dashboard will be shown by setupProStorageDashboard in workspace initialization
     }
   } else {
-    console.error('[Init] Classes not defined yet - NotesWorkspace:', typeof NotesWorkspace, 'BlueskyIntegration:', typeof BlueskyIntegration);
+    console.error('[Init] NotesWorkspace class not defined yet');
   }
 });
 
 // Fallback if DOM already loaded
 if (document.readyState !== 'loading') {
-  console.log('[Init] DOM already loaded, using fallback');
-  if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
-    console.log('[Init] Classes defined in fallback, creating instances...');
+  if (typeof NotesWorkspace !== 'undefined') {
     window.licenseManager = new LicenseManager();
     window.licenseManager.loadLicense().then(() => {
       console.log('[Init] License loaded in fallback');
       window.workspace = new NotesWorkspace();
       console.log('[Init] Workspace created in fallback');
-      window.bluesky = new BlueskyIntegration();
-      console.log('[Init] Bluesky created in fallback');
+      
+      // Create Bluesky integration instance
+      if (typeof BlueskyIntegration !== 'undefined') {
+        window.bluesky = new BlueskyIntegration();
+        console.log('[Init] Bluesky integration created');
+      }
       
       // Setup Pro Settings modal
       setupProModal();
@@ -54,7 +60,7 @@ if (document.readyState !== 'loading') {
       }
     });
   } else {
-    console.error('[Init] Classes not defined in fallback');
+    console.error('[Init] NotesWorkspace class not defined yet');
   }
 }
 

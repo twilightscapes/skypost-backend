@@ -434,3 +434,4 @@ class BackupManager {
 if (typeof window !== 'undefined') {
   window.BackupManager = BackupManager;
 }
+
