@@ -1,14 +1,30 @@
 // Initialize workspace and Bluesky after page load
 
+// Global error handler to catch all errors
+window.addEventListener('error', (event) => {
+  console.error('[Global Error]', event.error?.message, event.error?.stack);
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[Unhandled Promise Rejection]', event.reason);
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
   if (typeof NotesWorkspace !== 'undefined' && typeof BlueskyIntegration !== 'undefined') {
     window.licenseManager = new LicenseManager();
     await window.licenseManager.loadLicense();
     window.workspace = new NotesWorkspace();
+    await window.workspace.init();
     window.bluesky = new BlueskyIntegration();
     
     // Setup Pro Settings modal
     setupProModal();
+    
+    // Show pro storage dashboard if user is pro (will be called after init)
+    if (window.workspace && window.workspace.isPro) {
+      console.log('[Init] User is pro, will show dashboard after workspace loads');
+      // Dashboard will be shown by setupProStorageDashboard in workspace initialization
+    }
   } else {
     console.error('[Init] Classes not defined yet - NotesWorkspace:', typeof NotesWorkspace, 'BlueskyIntegration:', typeof BlueskyIntegration);
   }
@@ -30,6 +46,12 @@ if (document.readyState !== 'loading') {
       // Setup Pro Settings modal
       setupProModal();
       console.log('[Init] Setup complete in fallback');
+      
+      // Show pro storage dashboard if user is pro
+      if (window.workspace && window.workspace.isPro) {
+        console.log('[Init Fallback] User is pro, will show dashboard after workspace loads');
+        // Dashboard will be shown by setupProStorageDashboard in workspace initialization
+      }
     });
   } else {
     console.error('[Init] Classes not defined in fallback');
@@ -272,14 +294,33 @@ window.renderProModal = async function() {
           
           // Reload workspace's Pro tab state
           if (window.workspace) {
+            console.log('[License] window.workspace exists:', !!window.workspace);
             window.workspace.isPro = true;
-            // Show storage dashboard now that user is Pro
-            window.workspace.setupProStorageDashboard();
+            console.log('[License] ✅ isPro flag set to true');
+            
+            // Now show the pro storage dashboard
+            if (window.workspace && typeof window.workspace.setupProStorageDashboard === 'function') {
+              try {
+                console.log('[License] Calling setupProStorageDashboard()...');
+                window.workspace.setupProStorageDashboard();
+                console.log('[License] ✅ setupProStorageDashboard() executed');
+              } catch (err) {
+                console.error('[License] Error in setupProStorageDashboard:', err);
+              }
+            } else {
+              console.warn('[License] setupProStorageDashboard not available');
+            }
+          } else {
+            console.warn('[License] window.workspace is not available');
           }
           
           // Reload modal to show pro features
           setTimeout(() => {
             window.renderProModal();
+            // Reload page after 2 seconds to fully initialize pro features
+            setTimeout(() => {
+              location.reload();
+            }, 2000);
           }, 1500);
         } else {
           licenseMessage.style.display = 'block';

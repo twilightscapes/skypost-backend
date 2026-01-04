@@ -6,6 +6,20 @@ class NotesWorkspace {
     this.allNotes = [];
     this.colors = ['#ffffff', '#fef08a', '#fca5a5', '#bfdbfe', '#bbf7d0', '#e9d5ff', '#fed7aa', '#f3f3f3'];
     this.currentFilter = 'all'; // Track current filter
+    
+    // Initialize isPro from license manager if available
+    if (typeof window.licenseManager !== 'undefined') {
+      this.isPro = window.licenseManager.isProUser();
+      console.log('[Workspace] isPro initialized from license manager:', this.isPro);
+    } else {
+      this.isPro = false;
+    }
+    
+    // Initialize backup manager if available
+    if (typeof BackupManager !== 'undefined') {
+      this.backupManager = new BackupManager();
+    }
+    
     this.init();
   }
 
@@ -59,8 +73,15 @@ class NotesWorkspace {
         // ignore in environments without chrome.runtime
       }
 
+      // Show pro storage dashboard if user is pro
+      console.log('[Workspace Init] isPro:', this.isPro, 'setupProStorageDashboard type:', typeof this.setupProStorageDashboard);
+      if (this.isPro && typeof this.setupProStorageDashboard === 'function') {
+        console.log('[Workspace Init] User is pro, initializing storage dashboard');
+        this.setupProStorageDashboard();
+      }
+
     } catch (error) {
-      // Silently fail - initialization error
+      console.error('[Workspace Init] Error during initialization:', error);
     }
   }
 
@@ -143,8 +164,13 @@ class NotesWorkspace {
     });
 
     // Clear all
-    document.getElementById('clear-all-btn').addEventListener('click', () => {
-      this.clearAllNotes();
+    document.getElementById('clear-all-btn').addEventListener('click', async () => {
+      try {
+        await this.clearAllNotes();
+      } catch (err) {
+        console.error('[Workspace] Clear all error:', err);
+        this.showMessage('❌ Error clearing notes: ' + err.message, 'error');
+      }
     });
 
     // Toolbar buttons
@@ -832,18 +858,38 @@ class NotesWorkspace {
       return;
     }
 
-    for (const note of this.allNotes) {
-      await this.db.deleteNote(note.id);
+    try {
+      for (const note of this.allNotes) {
+        await this.db.deleteNote(note.id);
+      }
+
+      this.allNotes = [];
+      this.currentNote = null;
+
+      // Update UI
+      document.getElementById('note-title').value = '';
+      document.getElementById('editor-content').innerHTML = '';
+      this.updatePlaceholder();
+      await this.renderNotesList();
+      
+      // Sync to chrome.storage.sync
+      try {
+        await chrome.storage.sync.clear();
+        console.log('[Workspace] All data cleared and synced');
+      } catch (syncErr) {
+        console.warn('[Workspace] Sync clear error:', syncErr);
+      }
+      
+      this.showMessage('✅ All notes deleted', 'success');
+      
+      // Refresh the page to fully reset the UI
+      setTimeout(() => {
+        location.reload();
+      }, 500);
+    } catch (error) {
+      console.error('[Workspace] Error clearing notes:', error);
+      this.showMessage('❌ Error deleting notes: ' + error.message, 'error');
     }
-
-    this.allNotes = [];
-    this.currentNote = null;
-
-    // Update UI
-    document.getElementById('note-title').value = '';
-    document.getElementById('editor-content').innerHTML = '';
-    this.updatePlaceholder();
-    await this.renderNotesList();
   }
 
   async renderNotesList() {
@@ -1728,6 +1774,82 @@ class NotesWorkspace {
       // Add save button listener
       document.getElementById('editor-link-save-btn').addEventListener('click', () => {
         this.togglePreviewEdit(previewEl, ogData);
+      });
+    }
+  }
+
+  setupProStorageDashboard() {
+    console.log('[Pro Storage] setupProStorageDashboard() called');
+    console.log('[Pro Storage] this.allNotes:', this.allNotes?.length || 0, 'notes');
+    
+    // Calculate total storage used by all notes
+    let totalBytes = 0;
+    
+    if (this.allNotes && Array.isArray(this.allNotes)) {
+      for (const note of this.allNotes) {
+        // Count note content
+        if (note.content) {
+          totalBytes += new Blob([note.content]).size;
+        }
+        // Count image data if present
+        if (note.image) {
+          totalBytes += new Blob([note.image]).size;
+        }
+      }
+    }
+    
+    // Convert bytes to MB
+    const usedMB = (totalBytes / (1024 * 1024)).toFixed(2);
+    
+    // Default pro quota is 50MB
+    const quotaMB = 50;
+    const percentageUsed = Math.min((totalBytes / (quotaMB * 1024 * 1024)) * 100, 100);
+    
+    // Update dashboard elements
+    const dashboardDiv = document.getElementById('pro-storage-dashboard');
+    const progressBar = document.getElementById('pro-storage-bar');
+    const statsDiv = document.getElementById('pro-storage-stats');
+    
+    console.log('[Pro Storage] Found dashboard div:', !!dashboardDiv);
+    console.log('[Pro Storage] Found progress bar:', !!progressBar);
+    console.log('[Pro Storage] Found stats div:', !!statsDiv);
+    
+    if (dashboardDiv) {
+      dashboardDiv.hidden = false;
+      console.log('[Pro Storage] ✅ Dashboard unhidden');
+    }
+    
+    if (progressBar) {
+      progressBar.style.width = percentageUsed + '%';
+      console.log('[Pro Storage] ✅ Progress bar width set to:', percentageUsed + '%');
+    }
+    
+    if (statsDiv) {
+      statsDiv.textContent = `${usedMB}MB / ${quotaMB}MB used`;
+      console.log('[Pro Storage] ✅ Stats text set to:', `${usedMB}MB / ${quotaMB}MB used`);
+    }
+    
+    console.log(`[Pro Storage] ✅ Dashboard complete: ${usedMB}MB / ${quotaMB}MB used (${percentageUsed.toFixed(1)}%)`);
+    
+    // Add click handler to request more storage button
+    const requestBtn = document.getElementById('pro-request-storage-btn');
+    if (requestBtn) {
+      requestBtn.addEventListener('click', async () => {
+        try {
+          if (navigator.storage && navigator.storage.persist) {
+            const isPersistent = await navigator.storage.persist();
+            if (isPersistent) {
+              alert('✅ Persistent storage enabled! Your notes are now saved permanently.');
+            } else {
+              alert('Storage request was not granted. Please check your browser settings.');
+            }
+          } else {
+            alert('Persistent storage API not available in this browser.');
+          }
+        } catch (err) {
+          console.error('[Pro Storage] Error requesting persistent storage:', err);
+          alert('Error requesting storage: ' + err.message);
+        }
       });
     }
   }
