@@ -103,6 +103,10 @@
       background: rgba(255, 255, 255, 0.3);
     }
 
+    #close-workspace:hover {
+      background: #dc2626 !important;
+    }
+
     .sidebar-actions {
       padding: 1rem;
       border-bottom: 1px solid rgba(0, 0, 0, 0.1);
@@ -1468,13 +1472,18 @@
       <div class="sidebar-header">
         <h2>🦋 SkyPost</h2>
         <div style="display: flex; gap: 0.5rem;">
-          <button id="pro-settings-btn" title="Pro Features & License" style="background: none; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; width: 24px; height: 24px;">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <button id="pro-settings-btn" title="Pro Features & License">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="12" r="3"></circle>
               <path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m5.08 5.08l4.24 4.24M1 12h6m6 0h6M4.22 19.78l4.24-4.24m5.08-5.08l4.24-4.24"></path>
             </svg>
           </button>
-          <button id="close-workspace" title="Close workspace">✕</button>
+          <button id="close-workspace" title="Close workspace">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
         </div>
       </div>
       
