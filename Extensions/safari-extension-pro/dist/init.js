@@ -415,10 +415,6 @@ window.renderProModal = async function() {
             // Clear all data
             if (window.workspace && window.workspace.backupManager) {
               await window.workspace.backupManager.clearAllData(false);
-              // Clear Bluesky session
-              if (window.bluesky) {
-                await window.bluesky.clearSession();
-              }
               // Clear license
               if (window.licenseManager) {
                 await window.licenseManager.deactivateLicense();

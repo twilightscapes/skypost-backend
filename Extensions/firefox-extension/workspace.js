@@ -165,11 +165,24 @@ class NotesWorkspace {
 
     // Clear all
     document.getElementById('clear-all-btn').addEventListener('click', async () => {
-      try {
-        await this.clearAllNotes();
-      } catch (err) {
-        console.error('[Workspace] Clear all error:', err);
-        this.showMessage('❌ Error clearing notes: ' + err.message, 'error');
+      if (this.allNotes.length === 0) {
+        this.showMessage('No notes to delete', 'info');
+        return;
+      }
+      
+      // Show custom confirmation modal
+      const confirmed = await this.showConfirmModal(
+        `Delete all ${this.allNotes.length} notes?`,
+        'This action cannot be undone. All notes and Bluesky session data will be removed.'
+      );
+      
+      if (confirmed) {
+        try {
+          await this.clearAllNotes();
+        } catch (err) {
+          console.error('[Workspace] Clear all error:', err);
+          this.showMessage('❌ Error clearing notes: ' + err.message, 'error');
+        }
       }
     });
 
@@ -478,6 +491,16 @@ class NotesWorkspace {
         alert('Please create a post first');
         return;
       }
+      
+      // Check scheduled post limit for non-pro users
+      if (!this.isPro) {
+        const scheduledCount = this.allNotes.filter(n => n.status === 'scheduled').length;
+        if (scheduledCount >= 1) {
+          this.showMessage('❌ Upgrade to Pro to schedule more posts', 'info');
+          return;
+        }
+      }
+      
       // Save current note before scheduling
       this.currentNote.title = document.getElementById('note-title').value || 'Untitled Post';
       const editor = document.getElementById('editor-content');
@@ -854,10 +877,6 @@ class NotesWorkspace {
   }
 
   async clearAllNotes() {
-    if (this.allNotes.length === 0 || !confirm(`Delete all ${this.allNotes.length} notes?`)) {
-      return;
-    }
-
     try {
       for (const note of this.allNotes) {
         await this.db.deleteNote(note.id);
@@ -872,20 +891,41 @@ class NotesWorkspace {
       this.updatePlaceholder();
       await this.renderNotesList();
       
-      // Sync to chrome.storage.sync
+      // Clear ALL data including Bluesky session from both storages
       try {
-        await chrome.storage.sync.clear();
-        console.log('[Workspace] All data cleared and synced');
+        // Clear sync storage
+        await new Promise((resolve, reject) => {
+          chrome.storage.sync.clear(() => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              console.log('[Workspace] Sync storage cleared');
+              resolve();
+            }
+          });
+        });
+        
+        // Clear local storage (includes blueskySession)
+        await new Promise((resolve, reject) => {
+          chrome.storage.local.clear(() => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              console.log('[Workspace] Local storage cleared');
+              resolve();
+            }
+          });
+        });
       } catch (syncErr) {
-        console.warn('[Workspace] Sync clear error:', syncErr);
+        console.warn('[Workspace] Storage clear error:', syncErr);
       }
       
-      this.showMessage('✅ All notes deleted', 'success');
+      this.showMessage('✅ All data removed', 'success');
       
-      // Refresh the page to fully reset the UI
+      // Refresh the page to fully reset the UI (like license activation)
       setTimeout(() => {
-        location.reload();
-      }, 500);
+        window.location.reload();
+      }, 1000);
     } catch (error) {
       console.error('[Workspace] Error clearing notes:', error);
       this.showMessage('❌ Error deleting notes: ' + error.message, 'error');
@@ -2818,6 +2858,60 @@ class BlueskyIntegration {
     setTimeout(() => {
       msgEl.style.display = 'none';
     }, 3000);
+  }
+
+  showConfirmModal(title, message) {
+    return new Promise((resolve) => {
+      // Create modal overlay
+      const overlay = document.createElement('div');
+      overlay.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+      
+      // Create modal content
+      const modal = document.createElement('div');
+      modal.style.cssText = 'background: white; border-radius: 8px; padding: 24px; max-width: 400px; box-shadow: 0 10px 40px rgba(0,0,0,0.2);';
+      
+      // Title
+      const titleEl = document.createElement('h2');
+      titleEl.textContent = title;
+      titleEl.style.cssText = 'margin: 0 0 12px 0; font-size: 18px; color: #1f2937;';
+      
+      // Message
+      const msgEl = document.createElement('p');
+      msgEl.textContent = message;
+      msgEl.style.cssText = 'margin: 0 0 20px 0; font-size: 14px; color: #6b7280; line-height: 1.5;';
+      
+      // Buttons container
+      const buttonsDiv = document.createElement('div');
+      buttonsDiv.style.cssText = 'display: flex; gap: 10px; justify-content: flex-end;';
+      
+      // Cancel button
+      const cancelBtn = document.createElement('button');
+      cancelBtn.textContent = 'Cancel';
+      cancelBtn.style.cssText = 'padding: 8px 16px; border: 1px solid #e5e7eb; border-radius: 4px; background: white; color: #6b7280; cursor: pointer; font-weight: 500;';
+      cancelBtn.onclick = () => {
+        overlay.remove();
+        resolve(false);
+      };
+      
+      // Confirm button
+      const confirmBtn = document.createElement('button');
+      confirmBtn.textContent = 'Delete All';
+      confirmBtn.style.cssText = 'padding: 8px 16px; border: none; border-radius: 4px; background: #dc2626; color: white; cursor: pointer; font-weight: 500;';
+      confirmBtn.onclick = () => {
+        overlay.remove();
+        resolve(true);
+      };
+      
+      buttonsDiv.appendChild(cancelBtn);
+      buttonsDiv.appendChild(confirmBtn);
+      
+      modal.appendChild(titleEl);
+      modal.appendChild(msgEl);
+      modal.appendChild(buttonsDiv);
+      overlay.appendChild(modal);
+      
+      document.body.appendChild(overlay);
+    });
   }
 
   sendToComposer(text, imageData = null, customLinkPreview = null) {

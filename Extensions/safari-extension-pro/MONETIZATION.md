@@ -18,7 +18,7 @@ Keep both versions separate to maintain the free tier while developing premium f
 
 #### Free Plan (Safari Extension)
 - ✅ Unlimited manual posts
-- ✅ Basic scheduling (5 pending posts max)
+- ✅ Basic scheduling (1 pending post max)
 - ✅ Link preview cards
 - ✅ Image uploads
 - ✅ Post history tracking
