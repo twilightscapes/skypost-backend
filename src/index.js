@@ -23,6 +23,9 @@ const PORT = process.env.PORT || 3000;
 
 console.log('🔧 Listening on port:', PORT);
 
+// Serve static files (logos, etc.)
+app.use(express.static(path.join(__dirname, '..', 'src')));
+
 // PostgreSQL connection (from DATABASE_URL on Render)
 let pool = null;
 let useFileStorage = false;
@@ -521,22 +524,13 @@ app.get('/', (req, res) => {
 <body>
   <header>
     <div class="container">
-      <svg class="logo" viewBox="0 0 1532 401" xmlns="http://www.w3.org/2000/svg">
-        <!-- SkyPost Logo -->
-        <g transform="matrix(1,0,0,1,-1213,-383)">
-          <g id="Artboard2" transform="matrix(0.982681,0,0,0.345392,54.418858,383)">
-            <g transform="matrix(0.448443,0,0,1.275875,1191.691512,30.856286)">
-              <path d="M51.55,23.7C67.06,14.93 85.69,14.18 102.95,16.78C128.4,20.68 152.41,30.95 174.92,43.15C213.05,63.96 246.22,92.56 277.13,122.81C322.05,167.33 362.21,216.46 399.12,267.75C428.85,309.75 457.22,352.95 480,399.17C497.25,363.91 518.12,330.57 539.9,297.96C561.11,266.53 583.65,236 607.53,206.54C632.97,175.19 659.89,145 688.94,116.93C714.98,91.96 742.64,68.33 773.67,49.72C792.44,38.52 812.24,28.83 833.15,22.31C851.66,16.72 871.51,13.22 890.72,17.13C904.82,19.92 917.87,27.94 926.29,39.64C937.5,55.02 941.72,74.25 943.31,92.9C944.48,105.95 943.86,119.06 943.05,132.11C939.97,182.79 935.77,233.4 930.99,283.94C928.97,304.96 926.77,325.97 924.12,346.92C922.01,361.67 920.54,376.67 915.6,390.82C905.56,422.02 886.87,450.56 861.34,471.24C836.61,491.55 806.42,504.44 775.29,511.13C737.46,519.34 698.16,518.98 660.02,513.07C700.03,520.26 740.01,531.2 775.52,551.5C798.95,565.03 820.7,583.42 832.91,608.02C843.14,628.18 845.09,651.98 839.59,673.8C832.36,703.08 814.76,728.63 794.56,750.55C777.4,768.77 758.86,785.82 738.39,800.28C716.49,815.62 691.8,828.19 665,831.63C643.96,834.45 622.16,830.46 603.42,820.52C578.84,807.7 559.51,786.87 543.75,764.42C518.53,728 501.44,686.72 487.22,644.97C485.03,639.05 483.4,632.89 480.66,627.19C480.32,627.2 479.64,627.22 479.3,627.23C474.93,637.31 472.02,647.97 468.13,658.24C454.79,695.56 438.61,732.24 415.91,764.9C404.5,781.12 391.31,796.29 375.53,808.41C362.64,818.32 347.89,826.05 332,829.76C315.03,833.86 297.11,833.17 280.27,828.81C260.21,823.63 241.61,813.9 224.55,802.31C206.2,789.73 189.44,774.97 173.79,759.2C153.06,738.46 134.54,714.6 124.34,686.85C117.52,668.3 115.16,647.8 119.72,628.43C124.23,608.7 135.59,591.04 150.05,577.08C175.39,552.7 208.16,537.77 241.29,527.16C260.75,521.19 280.57,516.25 300.7,513.15C275.97,516.54 250.94,518.55 225.98,516.79C182.15,514.05 137.77,501.44 102.59,474.37C79.29,456.52 60.99,432.37 49.77,405.27C45.25,394.22 41.28,382.83 39.43,371C35.17,345.48 32.63,319.71 29.96,293.98C24.76,240.08 20.22,186.12 16.93,132.07C15.28,108.09 15.26,83.35 23.08,60.34C28.09,45.44 37.57,31.45 51.55,23.7Z" style="fill:white;"/>
-            </g>
-          </g>
-        </g>
-      </svg>
+      <img src="/SkyPost-Logo.svg" alt="SkyPost Logo" class="logo">
       
       <h1>✉️ SkyPost</h1>
       <p class="tagline">Schedule your emails with ease. Compose now, send later. Available as a browser extension for Chrome, Firefox, and Safari.</p>
       
       <div class="cta-section">
-        <a href="https://skypost.app/pro/checkout" class="btn btn-primary">⭐ Upgrade to Pro</a>
+        <a href="/pro/checkout" class="btn btn-primary">⭐ Upgrade to Pro</a>
         <a href="#stores" class="btn btn-secondary">📥 Download for Free</a>
       </div>
     </div>
@@ -633,7 +627,7 @@ app.get('/', (req, res) => {
         </div>
       </div>
       
-      <a href="https://skypost.app/pro/checkout" class="btn btn-primary">Start Your Free Trial</a>
+      <a href="/pro/checkout" class="btn btn-primary">Start Your Free Trial</a>
     </div>
   </section>
   
@@ -642,6 +636,274 @@ app.get('/', (req, res) => {
       <p>&copy; 2026 SkyPost. All rights reserved. | <a href="https://skypost.app" style="color: #667eea; text-decoration: none;">skypost.app</a></p>
     </div>
   </footer>
+</body>
+</html>
+  `;
+  res.send(html);
+});
+
+// Checkout page - allows user to start Stripe checkout
+app.get('/pro/checkout', (req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Upgrade to SkyPost Pro</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      color: #333;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    
+    .checkout-container {
+      background: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+      max-width: 500px;
+      width: 100%;
+      padding: 40px;
+    }
+    
+    h1 {
+      font-size: 32px;
+      margin-bottom: 10px;
+      color: #667eea;
+    }
+    
+    .subtitle {
+      color: #666;
+      margin-bottom: 30px;
+      font-size: 16px;
+    }
+    
+    .form-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    input[type="email"],
+    input[type="text"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.3s;
+    }
+    
+    input[type="email"]:focus,
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+    
+    .pricing-box {
+      background: #f8f9fa;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 30px 0;
+      text-align: center;
+    }
+    
+    .price {
+      font-size: 48px;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+    
+    .billing-period {
+      color: #666;
+      font-size: 14px;
+    }
+    
+    .features-list {
+      list-style: none;
+      margin: 20px 0;
+    }
+    
+    .features-list li {
+      padding: 10px 0;
+      color: #555;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .features-list li:last-child {
+      border-bottom: none;
+    }
+    
+    .features-list li:before {
+      content: "✓ ";
+      color: #667eea;
+      font-weight: bold;
+      margin-right: 10px;
+    }
+    
+    button {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+    
+    button:active {
+      transform: translateY(0);
+    }
+    
+    .loading {
+      display: none;
+    }
+    
+    button.loading {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+    
+    .error {
+      background: #fee;
+      color: #c33;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      display: none;
+    }
+    
+    .back-link {
+      text-align: center;
+      margin-top: 20px;
+    }
+    
+    .back-link a {
+      color: #667eea;
+      text-decoration: none;
+      font-weight: 500;
+    }
+  </style>
+</head>
+<body>
+  <div class="checkout-container">
+    <h1>🌟 SkyPost Pro</h1>
+    <p class="subtitle">Unlock advanced email scheduling features</p>
+    
+    <div class="error" id="error"></div>
+    
+    <form id="checkoutForm">
+      <div class="form-group">
+        <label for="email">Email Address</label>
+        <input type="email" id="email" name="email" placeholder="your@email.com" required>
+      </div>
+      
+      <div class="pricing-box">
+        <div class="price">$9.99</div>
+        <div class="billing-period">per month</div>
+      </div>
+      
+      <ul class="features-list">
+        <li>Advanced scheduling</li>
+        <li>Email analytics</li>
+        <li>Save templates</li>
+        <li>Email reminders</li>
+        <li>Priority support</li>
+      </ul>
+      
+      <button type="submit">
+        <span class="button-text">Continue to Payment</span>
+        <span class="loading"> Processing...</span>
+      </button>
+    </form>
+    
+    <div class="back-link">
+      <a href="/">← Back to Home</a>
+    </div>
+  </div>
+  
+  <script>
+    document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const email = document.getElementById('email').value;
+      const button = e.target.querySelector('button');
+      const buttonText = e.target.querySelector('.button-text');
+      const loading = e.target.querySelector('.loading');
+      const errorDiv = document.getElementById('error');
+      
+      // Clear previous errors
+      errorDiv.style.display = 'none';
+      
+      // Disable button and show loading state
+      button.disabled = true;
+      buttonText.style.display = 'none';
+      loading.style.display = 'inline';
+      
+      try {
+        // Call the backend to create a Stripe checkout session
+        const response = await fetch('/api/subscriptions/create-checkout', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            email: email,
+            deviceId: 'web-' + Date.now(),
+          })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Failed to create checkout session');
+        }
+        
+        const data = await response.json();
+        
+        if (data.sessionUrl) {
+          // Redirect to Stripe checkout
+          window.location.href = data.sessionUrl;
+        } else {
+          throw new Error('No checkout URL returned');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        errorDiv.textContent = 'Error: ' + (error.message || 'Failed to process checkout. Please try again.');
+        errorDiv.style.display = 'block';
+        
+        // Re-enable button
+        button.disabled = false;
+        buttonText.style.display = 'inline';
+        loading.style.display = 'none';
+      }
+    });
+  </script>
 </body>
 </html>
   `;
