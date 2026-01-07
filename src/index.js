@@ -150,6 +150,8 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         email: charge.billing_details?.email,
         metadata: charge.metadata
       });
+      console.log(`🔍 Full charge object customer field:`, charge.customer);
+      console.log(`🔍 Full charge keys:`, Object.keys(charge));
       
       // Find the license by looking for pending licenses
       const db = await readDatabase();
@@ -193,6 +195,8 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         license.stripe_customer_id = charge.customer;
         license.activated_at = new Date().toISOString();
         // No expires_at - validity is tied to active Stripe subscription
+        
+        console.log(`💳 Storing Stripe customer ID: ${license.stripe_customer_id} for license: ${license.key}`);
         
         try {
           await writeDatabase(db);
@@ -1311,6 +1315,8 @@ app.post('/api/licenses/check', async (req, res) => {
 
     // For pro licenses, must have a Stripe customer ID (from actual payment)
     if (license.tier === 'pro') {
+      console.log(`💳 Checking for stripe_customer_id: ${license.stripe_customer_id}`);
+      
       if (!license.stripe_customer_id) {
         console.log(`❌ Pro license missing Stripe customer ID (test key?): ${licenseKey}`);
         return res.json({ valid: false, isPro: false, tier: 'free', reason: 'no_stripe_subscription' });
