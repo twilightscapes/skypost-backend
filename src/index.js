@@ -1309,8 +1309,13 @@ app.post('/api/licenses/check', async (req, res) => {
       return res.json({ valid: false, isPro: false, tier: license.tier, status: license.status });
     }
 
-    // For pro licenses, verify the Stripe subscription is still active
-    if (license.tier === 'pro' && license.stripe_customer_id) {
+    // For pro licenses, must have a Stripe customer ID (from actual payment)
+    if (license.tier === 'pro') {
+      if (!license.stripe_customer_id) {
+        console.log(`❌ Pro license missing Stripe customer ID (test key?): ${licenseKey}`);
+        return res.json({ valid: false, isPro: false, tier: 'free', reason: 'no_stripe_subscription' });
+      }
+
       try {
         console.log(`🔍 Verifying Stripe subscription for customer: ${license.stripe_customer_id}`);
         
