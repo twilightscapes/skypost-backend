@@ -527,11 +527,13 @@ app.get('/', (req, res) => {
       <img src="/SkyPost-Logo.svg" alt="SkyPost Logo" class="logo">
       
   
-      <p class="tagline">Schedule your emails with ease. Compose now, send later. Available as a browser extension for Chrome, Firefox, and Safari.</p>
+      <p class="tagline">Schedule your Bluesky Posts with ease.</p>
+      <p>Compose now, send later.</p> 
+      <p>Available as a browser extension for Chrome, Firefox, and Safari.</p>
       
       <div class="cta-section">
-        <button onclick="goToCheckout()" class="btn btn-primary">⭐ Upgrade to Pro</button>
-        <a href="#stores" class="btn btn-secondary">📥 Download for Free</a>
+        <button onclick="goToCheckout()" class="btn btn-primary">Upgrade to Pro</button>
+        <a href="#stores" class="btn btn-secondary">Download for Free</a>
       </div>
     </div>
   </header>
@@ -628,29 +630,9 @@ app.get('/', (req, res) => {
       <h2>🌟 Upgrade to Pro</h2>
       <p style="margin-bottom: 40px; font-size: 18px;">Unlock advanced features and take control of your email scheduling</p>
       
-      <div class="pro-features">
-        <div class="pro-feature">
-          <strong>📅 Advanced Scheduling</strong>
-          <p>Schedule emails for specific dates and times</p>
-        </div>
-        
-        <div class="pro-feature">
-          <strong>📊 Analytics</strong>
-          <p>Track when your scheduled emails are sent</p>
-        </div>
-        
-        <div class="pro-feature">
-          <strong>✏️ Templates</strong>
-          <p>Save and reuse email templates</p>
-        </div>
-        
-        <div class="pro-feature">
-          <strong>🔔 Reminders</strong>
-          <p>Get notified before emails are sent</p>
-        </div>
-      </div>
+    
       
-      <button onclick="goToCheckout()" class="btn btn-primary">Start Your Free Trial</button>
+      <button onclick="goToCheckout()" class="btn btn-primary">Upgrade To Pro!</button>
     </div>
   </section>
   
