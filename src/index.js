@@ -636,8 +636,8 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
         }
       ],
       mode: 'subscription',
-      success_url: `https://skypost-backend-production.up.railway.app/pro/success?license_key=${licenseKey}`,
-      cancel_url: 'https://skypost-backend-production.up.railway.app/pro/cancel',
+      success_url: `https://skypost.app/pro/success?license_key=${licenseKey}`,
+      cancel_url: 'https://skypost.app/pro/cancel',
       client_reference_id: licenseKey,
       metadata: {
         license_key: licenseKey,
