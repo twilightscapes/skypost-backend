@@ -51,13 +51,22 @@ function initializeDatabase() {
       tier VARCHAR(50) DEFAULT 'free',
       expires_at TIMESTAMP,
       activated_at TIMESTAMP,
-      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      stripe_customer_id VARCHAR(255)
     )
   `, (err) => {
     if (err) {
       console.error('Error creating table:', err);
     } else {
       console.log('✅ Licenses table ready');
+      // Try to add stripe_customer_id column if it doesn't exist
+      pool.query(`
+        ALTER TABLE licenses ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255)
+      `, (alterErr) => {
+        if (alterErr && !alterErr.message.includes('already exists')) {
+          console.warn('Note: stripe_customer_id column may already exist');
+        }
+      });
     }
   });
 }
@@ -77,7 +86,8 @@ async function readDatabase() {
           tier: row.tier,
           expires_at: row.expires_at,
           activated_at: row.activated_at,
-          created_at: row.created_at
+          created_at: row.created_at,
+          stripe_customer_id: row.stripe_customer_id
         })),
         payments: []
       };
@@ -102,9 +112,9 @@ async function writeDatabase(data) {
       
       for (const license of data.licenses) {
         await pool.query(
-          `INSERT INTO licenses (key, email, status, tier, expires_at, activated_at) 
-           VALUES ($1, $2, $3, $4, $5, $6)`,
-          [license.key, license.email, license.status, license.tier, license.expires_at, license.activated_at]
+          `INSERT INTO licenses (key, email, status, tier, expires_at, activated_at, stripe_customer_id) 
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [license.key, license.email, license.status, license.tier, license.expires_at, license.activated_at, license.stripe_customer_id]
         );
       }
       return;
