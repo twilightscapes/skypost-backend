@@ -1314,7 +1314,7 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
 
     // Create Stripe checkout session
     console.log(`🛒 [CHECKOUT] Creating Stripe session with PRICE_ID: ${process.env.STRIPE_PRICE_ID}`);
-    const session = await stripe.checkout.sessions.create({
+    const checkoutConfig = {
       payment_method_types: ['card'],
       line_items: [
         {
@@ -1326,12 +1326,20 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
       success_url: `https://skypost.app/pro/success?license_key=${licenseKey}`,
       cancel_url: 'https://skypost.app/pro/cancel',
       client_reference_id: licenseKey,
+      customer_creation: 'always',
       metadata: {
         license_key: licenseKey,
         device_id: deviceId || 'multi-device',
         email: licenseEmail
       }
-    });
+    };
+    
+    // Only pre-fill email if provided
+    if (email) {
+      checkoutConfig.customer_email = email;
+    }
+    
+    const session = await stripe.checkout.sessions.create(checkoutConfig);
     console.log(`🛒 [CHECKOUT] Stripe session created: ${session.id}`);
 
     // Update license with Stripe customer ID for webhook matching
