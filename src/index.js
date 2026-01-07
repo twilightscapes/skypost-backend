@@ -530,53 +530,53 @@ app.get('/', (req, res) => {
       <p class="tagline">Schedule your emails with ease. Compose now, send later. Available as a browser extension for Chrome, Firefox, and Safari.</p>
       
       <div class="cta-section">
-        <a href="/pro/checkout" class="btn btn-primary">⭐ Upgrade to Pro</a>
+        <a href="https://checkout.stripe.com/c/pay/cs_test_a1gCzaiwLe6xrRUozrxIdgIHyZ7I0i1BSuPoor3tjNWts00EGxq7ea43Wm#fidnandhYHdWcXxpYCc%2FJ2FgY2RpdmApJ2R1bE5gfCc%2FJ3VuWnFgdnFaMDRWbnBgakJ0R2FrUEpyVzJNcHdKUk5UUXJCNjM3VzdBRF9xZzQzQ05oVklIcEtPXUpWc2Ftak1dNjRXTXVcczZjT2hkNWtAbk1SaVdUYlI1T2BVSW88NX81NXB%2FU1RwYjwyJyknY3dqaFZgd3Ngdyc%2FcXdwYCknZ2RmbmJ3anBrYUZqaWp3Jz8nJjc3Nzc3NycpJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl" class="btn btn-primary">⭐ Upgrade to Pro</a>
         <a href="#stores" class="btn btn-secondary">📥 Download for Free</a>
       </div>
     </div>
   </header>
   
-  <section class="features-section">
-    <div class="container">
-      <div class="features-grid">
-        <div class="feature-card">
-          <div class="feature-icon">⏰</div>
-          <h3>Schedule Emails</h3>
-          <p>Compose your message and schedule it to send at the perfect time.</p>
-        </div>
+  // <section class="features-section">
+  //   <div class="container">
+  //     <div class="features-grid">
+  //       <div class="feature-card">
+  //         <div class="feature-icon">⏰</div>
+  //         <h3>Schedule Emails</h3>
+  //         <p>Compose your message and schedule it to send at the perfect time.</p>
+  //       </div>
         
-        <div class="feature-card">
-          <div class="feature-icon">📧</div>
-          <h3>Works Anywhere</h3>
-          <p>Seamlessly integrates with Gmail, Outlook, and other web email services.</p>
-        </div>
+  //       <div class="feature-card">
+  //         <div class="feature-icon">📧</div>
+  //         <h3>Works Anywhere</h3>
+  //         <p>Seamlessly integrates with Gmail, Outlook, and other web email services.</p>
+  //       </div>
         
-        <div class="feature-card">
-          <div class="feature-icon">🚀</div>
-          <h3>Lightning Fast</h3>
-          <p>One-click scheduling with a beautiful, intuitive interface.</p>
-        </div>
+  //       <div class="feature-card">
+  //         <div class="feature-icon">🚀</div>
+  //         <h3>Lightning Fast</h3>
+  //         <p>One-click scheduling with a beautiful, intuitive interface.</p>
+  //       </div>
         
-        <div class="feature-card">
-          <div class="feature-icon">💎</div>
-          <h3>Pro Features</h3>
-          <p>Advanced scheduling, templates, and email analytics with SkyPost Pro.</p>
-        </div>
+  //       <div class="feature-card">
+  //         <div class="feature-icon">💎</div>
+  //         <h3>Pro Features</h3>
+  //         <p>Advanced scheduling, templates, and email analytics with SkyPost Pro.</p>
+  //       </div>
         
-        <div class="feature-card">
-          <div class="feature-icon">🔒</div>
-          <h3>Privacy First</h3>
-          <p>Your emails stay secure. We never store your message content.</p>
-        </div>
+  //       <div class="feature-card">
+  //         <div class="feature-icon">🔒</div>
+  //         <h3>Privacy First</h3>
+  //         <p>Your emails stay secure. We never store your message content.</p>
+  //       </div>
         
-        <div class="feature-card">
-          <div class="feature-icon">🌐</div>
-          <h3>Cross-Platform</h3>
-          <p>Available on Chrome, Firefox, and Safari for maximum compatibility.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+  //       <div class="feature-card">
+  //         <div class="feature-icon">🌐</div>
+  //         <h3>Cross-Platform</h3>
+  //         <p>Available on Chrome, Firefox, and Safari for maximum compatibility.</p>
+  //       </div>
+  //     </div>
+  //   </div>
+  // </section>
   
   <section class="stores-section" id="stores">
     <div class="container">
@@ -627,7 +627,7 @@ app.get('/', (req, res) => {
         </div>
       </div>
       
-      <a href="/pro/checkout" class="btn btn-primary">Start Your Free Trial</a>
+      <a href="https://checkout.stripe.com/c/pay/cs_test_a1gCzaiwLe6xrRUozrxIdgIHyZ7I0i1BSuPoor3tjNWts00EGxq7ea43Wm#fidnandhYHdWcXxpYCc%2FJ2FgY2RpdmApJ2R1bE5gfCc%2FJ3VuWnFgdnFaMDRWbnBgakJ0R2FrUEpyVzJNcHdKUk5UUXJCNjM3VzdBRF9xZzQzQ05oVklIcEtPXUpWc2Ftak1dNjRXTXVcczZjT2hkNWtAbk1SaVdUYlI1T2BVSW88NX81NXB%2FU1RwYjwyJyknY3dqaFZgd3Ngdyc%2FcXdwYCknZ2RmbmJ3anBrYUZqaWp3Jz8nJjc3Nzc3NycpJ2lkfGpwcVF8dWAnPyd2bGtiaWBabHFgaCcpJ2BrZGdpYFVpZGZgbWppYWB3dic%2FcXdwYHgl" class="btn btn-primary">Start Your Free Trial</a>
     </div>
   </section>
   
