@@ -189,8 +189,10 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         // Always activate, even if no email
         license.status = 'active';
         license.tier = 'pro';
-        license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
+        // Store Stripe customer ID for real-time subscription verification
+        license.stripe_customer_id = charge.customer;
         license.activated_at = new Date().toISOString();
+        // No expires_at - validity is tied to active Stripe subscription
         
         try {
           await writeDatabase(db);
@@ -1279,7 +1281,7 @@ app.post('/api/subscriptions/check-license', async (req, res) => {
   }
 });
 
-// NEW: Check license by key (email-based system)
+// NEW: Check license by key (with real-time Stripe subscription verification)
 app.post('/api/licenses/check', async (req, res) => {
   try {
     const { licenseKey } = req.body;
@@ -1291,7 +1293,6 @@ app.post('/api/licenses/check', async (req, res) => {
 
     const db = await readDatabase();
     console.log(`📂 Total licenses in database: ${db.licenses.length}`);
-    console.log(`📋 All license keys: ${db.licenses.map(l => l.key).join(', ')}`);
     
     const license = db.licenses.find(l => l.key === licenseKey);
 
@@ -1301,29 +1302,71 @@ app.post('/api/licenses/check', async (req, res) => {
     }
 
     console.log(`✅ License FOUND: ${licenseKey}`);
-    // Auto-activate any license on first check (whether pending or any status)
-    // This ensures licenses created during checkout are activated
-    console.log(`🔍 License found: ${licenseKey} - Current status: ${license.status}, tier: ${license.tier}`);
     
-    if (license.status !== 'active' || license.tier !== 'pro') {
-      license.status = 'active';
-      license.tier = 'pro';
-      license.expires_at = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString();
-      license.activated_at = new Date().toISOString();
-      await writeDatabase(db);
-      console.log(`✅ License ${licenseKey} activated - New status: ${license.status}, tier: ${license.tier}`);
+    // Check if license is active
+    if (license.status !== 'active') {
+      console.log(`❌ License is not active: ${license.status}`);
+      return res.json({ valid: false, isPro: false, tier: license.tier, status: license.status });
     }
 
-    const isActive = license.status === 'active' && license.tier === 'pro';
-    const isExpired = isActive && license.expires_at && new Date(license.expires_at) < new Date();
+    // For pro licenses, verify the Stripe subscription is still active
+    if (license.tier === 'pro' && license.stripe_customer_id) {
+      try {
+        console.log(`🔍 Verifying Stripe subscription for customer: ${license.stripe_customer_id}`);
+        
+        // Get customer's active subscriptions
+        const subscriptions = await stripe.subscriptions.list({
+          customer: license.stripe_customer_id,
+          status: 'active',
+          limit: 1
+        });
 
+        if (subscriptions.data.length === 0) {
+          console.log(`❌ No active Stripe subscription found for ${license.stripe_customer_id}`);
+          return res.json({ 
+            valid: false, 
+            isPro: false, 
+            tier: 'free',
+            reason: 'subscription_canceled'
+          });
+        }
+
+        const subscription = subscriptions.data[0];
+        console.log(`✅ Active Stripe subscription found: ${subscription.id}`);
+        
+        // Return pro status with subscription info
+        return res.json({
+          valid: true,
+          isPro: true,
+          tier: 'pro',
+          status: license.status,
+          email: license.email,
+          stripeSubscriptionId: subscription.id,
+          currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString(),
+          activatedAt: license.activated_at
+        });
+      } catch (stripeErr) {
+        console.error(`⚠️  Error checking Stripe subscription:`, stripeErr.message);
+        // If we can't reach Stripe, assume it's valid (fail open)
+        return res.json({
+          valid: true,
+          isPro: true,
+          tier: 'pro',
+          status: license.status,
+          email: license.email,
+          activatedAt: license.activated_at,
+          warning: 'Could not verify Stripe subscription'
+        });
+      }
+    }
+
+    // Non-pro license or no Stripe customer ID
     res.json({
       valid: true,
-      isPro: isActive && !isExpired,
+      isPro: license.tier === 'pro',
       tier: license.tier,
       status: license.status,
       email: license.email,
-      expiresAt: license.expires_at,
       activatedAt: license.activated_at
     });
   } catch (error) {
