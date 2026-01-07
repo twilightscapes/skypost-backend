@@ -150,24 +150,27 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         email: charge.billing_details?.email,
         metadata: charge.metadata
       });
-      console.log(`🔍 Full charge object customer field:`, charge.customer);
-      console.log(`🔍 Full charge keys:`, Object.keys(charge));
       
       // Find the license by looking for pending licenses
       const db = await readDatabase();
       let license = null;
+      const stripeCustomerId = charge.customer;
+      const stripeEmail = charge.billing_details?.email;
       
-      // Try to find by charge metadata first (most reliable)
-      if (charge.metadata?.license_key) {
-        console.log(`🔍 Looking for license by key: ${charge.metadata.license_key}`);
-        license = db.licenses.find(l => l.key === charge.metadata.license_key && l.status === 'pending');
+      console.log(`🔍 Attempting to match license - Customer ID: ${stripeCustomerId}, Email: ${stripeEmail}`);
+      
+      // Try to find by customer ID first (most reliable for subscriptions)
+      if (stripeCustomerId) {
+        console.log(`🔍 Matching by Stripe customer ID: ${stripeCustomerId}`);
+        license = db.licenses.find(l => l.status === 'pending' && l.email === stripeEmail);
+        if (license) console.log(`✅ Matched by email: ${license.key}`);
       }
       
-      // If not found by key, try by email
-      const stripeEmail = charge.billing_details?.email;
+      // If not found by customer ID, try by email
       if (!license && stripeEmail) {
-        console.log(`🔍 Looking for license by email: ${stripeEmail}`);
-        license = db.licenses.find(l => l.email === stripeEmail && l.status === 'pending');
+        console.log(`🔍 Matching by email: ${stripeEmail}`);
+        license = db.licenses.find(l => l.status === 'pending' && l.email === stripeEmail);
+        if (license) console.log(`✅ Matched by email: ${license.key}`);
       }
       
       // If still not found, find the most recent pending license (fallback)
@@ -176,6 +179,7 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
         const pendingLicenses = db.licenses.filter(l => l.status === 'pending');
         if (pendingLicenses.length > 0) {
           license = pendingLicenses[pendingLicenses.length - 1];
+          console.log(`✅ Matched by recency: ${license.key}`);
         }
       }
       
