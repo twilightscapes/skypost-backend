@@ -526,7 +526,7 @@ app.get('/', (req, res) => {
     <div class="container">
       <img src="/SkyPost-Logo.svg" alt="SkyPost Logo" class="logo">
       
-      <h1>✉️ SkyPost</h1>
+  
       <p class="tagline">Schedule your emails with ease. Compose now, send later. Available as a browser extension for Chrome, Firefox, and Safari.</p>
       
       <div class="cta-section">
@@ -1066,58 +1066,7 @@ app.get('/pro/success', (req, res) => {
 
 // Cancel page - user cancelled payment
 app.get('/pro/cancel', (req, res) => {
-  const html = `
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Payment Cancelled - SkyPost Pro</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 20px;
-    }
-    .container {
-      background: white;
-      border-radius: 12px;
-      padding: 40px;
-      max-width: 500px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-      text-align: center;
-    }
-    h1 { color: #333; margin-bottom: 10px; font-size: 28px; }
-    p { color: #666; margin: 15px 0; font-size: 16px; }
-    button {
-      padding: 12px 24px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      color: white;
-      border: none;
-      border-radius: 6px;
-      font-size: 16px;
-      font-weight: 600;
-      cursor: pointer;
-      margin-top: 20px;
-    }
-    button:hover { opacity: 0.9; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h1>Payment Cancelled</h1>
-    <p>Your payment was not completed. You can try again anytime from the SkyPost extension.</p>
-    <button onclick="window.close()">Close</button>
-  </div>
-</body>
-</html>
-  `;
-  res.send(html);
+  res.redirect('/');
 });
 
 // Register user and generate license
