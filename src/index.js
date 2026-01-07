@@ -1285,7 +1285,7 @@ app.get('/privacy', (req, res) => {
     </div>
     
     <h2>Introduction</h2>
-    <p>SkyPost ("we," "us," "our," or "Company") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our email scheduling extension ("Service").</p>
+    <p>SkyPost ("we," "us," "our," or "Company") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our Bluesky post scheduling extension ("Service").</p>
     
     <h2>1. Information We Collect</h2>
     
@@ -1297,19 +1297,19 @@ app.get('/privacy', (req, res) => {
       <li>Subscription preferences</li>
     </ul>
     
-    <h3>Email Content</h3>
-    <p><strong>We do NOT store or access your email content.</strong> SkyPost only:</p>
+    <h3>Post Content</h3>
+    <p><strong>We do NOT store or access your Bluesky post content.</strong> SkyPost only:</p>
     <ul>
-      <li>Reads scheduling metadata (dates, times, recipients) temporarily</li>
-      <li>Never stores email drafts or message content</li>
-      <li>Never accesses email attachments</li>
-      <li>Never reads email conversation history</li>
+      <li>Reads scheduling metadata (dates, times) temporarily</li>
+      <li>Never stores post drafts or message content</li>
+      <li>Never accesses post media or attachments</li>
+      <li>Never reads your Bluesky timeline or history</li>
     </ul>
     
     <h3>Usage Data</h3>
     <p>We may collect:</p>
     <ul>
-      <li>Number of scheduled emails (for analytics)</li>
+      <li>Number of scheduled posts (for analytics)</li>
       <li>Browser type and version</li>
       <li>IP address and general location (country/region)</li>
       <li>Timestamps of feature usage</li>
