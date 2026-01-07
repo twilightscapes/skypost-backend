@@ -1441,13 +1441,31 @@ app.post('/api/licenses/check', async (req, res) => {
         });
 
         if (subscriptions.data.length === 0) {
-          console.log(`❌ No active Stripe subscription found for ${license.stripe_customer_id}`);
-          return res.json({ 
-            valid: false, 
-            isPro: false, 
-            tier: 'free',
-            reason: 'subscription_canceled'
+          // Check what status the subscription actually has (for logging)
+          const allSubscriptions = await stripe.subscriptions.list({
+            customer: license.stripe_customer_id,
+            limit: 1
           });
+          
+          if (allSubscriptions.data.length > 0) {
+            const sub = allSubscriptions.data[0];
+            console.log(`❌ Subscription found but not active. Status: ${sub.status}`);
+            return res.json({ 
+              valid: false, 
+              isPro: false, 
+              tier: 'free',
+              reason: `subscription_${sub.status}`,
+              subscriptionStatus: sub.status
+            });
+          } else {
+            console.log(`❌ No subscription found for ${license.stripe_customer_id}`);
+            return res.json({ 
+              valid: false, 
+              isPro: false, 
+              tier: 'free',
+              reason: 'subscription_not_found'
+            });
+          }
         }
 
         const subscription = subscriptions.data[0];
