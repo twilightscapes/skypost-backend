@@ -1158,6 +1158,249 @@ app.get('/pro/cancel', (req, res) => {
   res.redirect('/');
 });
 
+// Privacy Policy page
+app.get('/privacy', (req, res) => {
+  const html = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy - SkyPost</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.8;
+      color: #333;
+      background: #f8f9fa;
+    }
+    
+    header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    
+    header h1 {
+      font-size: 36px;
+      margin-bottom: 10px;
+    }
+    
+    header p {
+      font-size: 16px;
+      opacity: 0.9;
+    }
+    
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 40px 20px;
+      background: white;
+    }
+    
+    .last-updated {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 40px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    h2 {
+      color: #667eea;
+      font-size: 24px;
+      margin-top: 40px;
+      margin-bottom: 20px;
+      padding-top: 20px;
+    }
+    
+    h2:first-of-type {
+      margin-top: 0;
+    }
+    
+    p {
+      margin-bottom: 15px;
+      color: #555;
+    }
+    
+    ul, ol {
+      margin-left: 20px;
+      margin-bottom: 15px;
+    }
+    
+    li {
+      margin-bottom: 10px;
+      color: #555;
+    }
+    
+    strong {
+      color: #333;
+    }
+    
+    footer {
+      background: #333;
+      color: white;
+      text-align: center;
+      padding: 30px 20px;
+      font-size: 14px;
+      margin-top: 60px;
+    }
+    
+    a {
+      color: #667eea;
+      text-decoration: none;
+    }
+    
+    a:hover {
+      text-decoration: underline;
+    }
+    
+    @media (max-width: 768px) {
+      header h1 {
+        font-size: 28px;
+      }
+      
+      .container {
+        padding: 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Privacy Policy</h1>
+    <p>SkyPost Email Scheduling Extension</p>
+  </header>
+  
+  <div class="container">
+    <div class="last-updated">
+      <strong>Last Updated:</strong> January 7, 2026
+    </div>
+    
+    <h2>Introduction</h2>
+    <p>SkyPost ("we," "us," "our," or "Company") is committed to protecting your privacy. This Privacy Policy explains how we collect, use, disclose, and safeguard your information when you use our email scheduling extension ("Service").</p>
+    
+    <h2>1. Information We Collect</h2>
+    
+    <h3>Account Information</h3>
+    <p>When you create a SkyPost Pro account, we collect:</p>
+    <ul>
+      <li>Email address (for license activation and support)</li>
+      <li>Payment information (processed securely through Stripe)</li>
+      <li>Subscription preferences</li>
+    </ul>
+    
+    <h3>Email Content</h3>
+    <p><strong>We do NOT store or access your email content.</strong> SkyPost only:</p>
+    <ul>
+      <li>Reads scheduling metadata (dates, times, recipients) temporarily</li>
+      <li>Never stores email drafts or message content</li>
+      <li>Never accesses email attachments</li>
+      <li>Never reads email conversation history</li>
+    </ul>
+    
+    <h3>Usage Data</h3>
+    <p>We may collect:</p>
+    <ul>
+      <li>Number of scheduled emails (for analytics)</li>
+      <li>Browser type and version</li>
+      <li>IP address and general location (country/region)</li>
+      <li>Timestamps of feature usage</li>
+    </ul>
+    
+    <h2>2. How We Use Your Information</h2>
+    <p>We use collected information for:</p>
+    <ul>
+      <li><strong>Service Delivery:</strong> Activating your license and processing subscriptions</li>
+      <li><strong>Improvements:</strong> Understanding how you use SkyPost to improve features</li>
+      <li><strong>Support:</strong> Responding to your inquiries and providing customer support</li>
+      <li><strong>Legal Compliance:</strong> Fulfilling legal obligations and protecting rights</li>
+      <li><strong>Fraud Prevention:</strong> Detecting and preventing fraudulent transactions</li>
+    </ul>
+    
+    <h2>3. Data Security</h2>
+    <p>We implement industry-standard security measures including:</p>
+    <ul>
+      <li>HTTPS encryption for all communications</li>
+      <li>Secure database storage with encrypted sensitive fields</li>
+      <li>Regular security audits and updates</li>
+      <li>No storage of payment card information (Stripe PCI-DSS compliant)</li>
+    </ul>
+    
+    <h2>4. Third-Party Services</h2>
+    <p>We use trusted third-party services:</p>
+    <ul>
+      <li><strong>Stripe:</strong> Payment processing and subscription management (<a href="https://stripe.com/privacy" target="_blank">Stripe Privacy Policy</a>)</li>
+      <li><strong>SendGrid:</strong> License delivery via email (<a href="https://sendgrid.com/policies/privacy/" target="_blank">SendGrid Privacy Policy</a>)</li>
+      <li><strong>Railway/Render:</strong> Infrastructure hosting</li>
+    </ul>
+    <p>These services have their own privacy policies, and we encourage you to review them.</p>
+    
+    <h2>5. Subscription and License Data</h2>
+    <p>When you subscribe:</p>
+    <ul>
+      <li>We store your Stripe customer ID for subscription verification</li>
+      <li>We verify subscription status in real-time against Stripe</li>
+      <li>You retain control of your subscription via your Stripe account</li>
+      <li>You can cancel, pause, or modify your subscription anytime through Stripe</li>
+    </ul>
+    
+    <h2>6. Your Rights and Choices</h2>
+    <p>You have the right to:</p>
+    <ul>
+      <li><strong>Access:</strong> Request a copy of your personal data</li>
+      <li><strong>Correction:</strong> Request corrections to inaccurate information</li>
+      <li><strong>Deletion:</strong> Request deletion of your data (subject to legal holds)</li>
+      <li><strong>Opt-Out:</strong> Disable the SkyPost extension at any time</li>
+      <li><strong>Export:</strong> Request your license key at any time</li>
+    </ul>
+    
+    <h2>7. Data Retention</h2>
+    <p>We retain your information for:</p>
+    <ul>
+      <li><strong>Active Accounts:</strong> Duration of your subscription plus 30 days</li>
+      <li><strong>Inactive Accounts:</strong> Up to 1 year for audit and recovery purposes</li>
+      <li><strong>Payment Records:</strong> 7 years (legal requirement)</li>
+    </ul>
+    
+    <h2>8. Children's Privacy</h2>
+    <p>SkyPost is not intended for users under 13 years old. We do not knowingly collect information from children. If we become aware of such collection, we will delete that information immediately.</p>
+    
+    <h2>9. Changes to This Policy</h2>
+    <p>We may update this Privacy Policy periodically. We will notify you of significant changes via email or by posting the updated policy on our website. Your continued use of SkyPost constitutes acceptance of changes.</p>
+    
+    <h2>10. Contact Us</h2>
+    <p>If you have questions about this Privacy Policy or our privacy practices, please contact us at:</p>
+    <ul>
+      <li><strong>Email:</strong> support@skypost.io</li>
+      <li><strong>Website:</strong> <a href="https://skypost.app">skypost.app</a></li>
+    </ul>
+    
+    <h2>11. Compliance</h2>
+    <p>SkyPost complies with:</p>
+    <ul>
+      <li>GDPR (General Data Protection Regulation) for EU users</li>
+      <li>CCPA (California Consumer Privacy Act) for California residents</li>
+      <li>Standard industry privacy practices and data protection regulations</li>
+    </ul>
+  </div>
+  
+  <footer>
+    <p>&copy; 2026 SkyPost. All rights reserved. | <a href="/" style="color: #667eea;">Back to Home</a></p>
+  </footer>
+</body>
+</html>
+  `;
+  res.send(html);
+});
+
 // Register user and generate license
 app.post('/api/auth/register', async (req, res) => {
   try {
