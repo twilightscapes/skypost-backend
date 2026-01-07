@@ -231,6 +231,93 @@ app.post('/webhooks/stripe', express.raw({type: 'application/json'}), async (req
       }
     }
 
+    // Handle subscription paused
+    if (event.type === 'customer.subscription.paused') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      
+      console.log(`⏸️  Subscription paused for customer: ${customerId}`);
+      
+      const db = await readDatabase();
+      const license = db.licenses.find(l => l.stripe_customer_id === customerId);
+      
+      if (license) {
+        license.tier = 'free';
+        license.status = 'paused';
+        await writeDatabase(db);
+        console.log(`✅ Downgraded license ${license.key} to free (subscription paused)`);
+      }
+    }
+
+    // Handle subscription resumed
+    if (event.type === 'customer.subscription.resumed') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      
+      console.log(`▶️  Subscription resumed for customer: ${customerId}`);
+      
+      const db = await readDatabase();
+      const license = db.licenses.find(l => l.stripe_customer_id === customerId);
+      
+      if (license && subscription.status === 'active') {
+        license.tier = 'pro';
+        license.status = 'active';
+        await writeDatabase(db);
+        console.log(`✅ Restored Pro access for license ${license.key} (subscription resumed)`);
+      }
+    }
+
+    // Handle subscription deleted/canceled
+    if (event.type === 'customer.subscription.deleted') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      
+      console.log(`🔴 Subscription deleted for customer: ${customerId}`);
+      
+      const db = await readDatabase();
+      const license = db.licenses.find(l => l.stripe_customer_id === customerId);
+      
+      if (license) {
+        license.tier = 'free';
+        license.status = 'canceled';
+        await writeDatabase(db);
+        console.log(`✅ Downgraded license ${license.key} to free (subscription canceled)`);
+      }
+    }
+
+    // Handle subscription updated (e.g., plan change)
+    if (event.type === 'customer.subscription.updated') {
+      const subscription = event.data.object;
+      const customerId = subscription.customer;
+      const prevSubscription = event.data.previous_attributes;
+      
+      // Only log if status changed
+      if (prevSubscription?.status && prevSubscription.status !== subscription.status) {
+        console.log(`🔄 Subscription status updated for customer ${customerId}: ${prevSubscription.status} → ${subscription.status}`);
+        
+        const db = await readDatabase();
+        const license = db.licenses.find(l => l.stripe_customer_id === customerId);
+        
+        if (license) {
+          if (subscription.status === 'active') {
+            license.tier = 'pro';
+            license.status = 'active';
+            console.log(`✅ Re-activated license ${license.key}`);
+          } else if (subscription.status === 'past_due') {
+            // Keep Pro access but flag as past_due
+            license.status = 'past_due';
+            console.log(`⚠️  License ${license.key} marked past_due (payment issue)`);
+          } else {
+            // All other statuses = downgrade to free
+            license.tier = 'free';
+            license.status = subscription.status;
+            console.log(`✅ Downgraded license ${license.key} (status: ${subscription.status})`);
+          }
+          await writeDatabase(db);
+        }
+      }
+    }
+
     res.json({ received: true });
   } catch (err) {
     console.error(`❌ Webhook error:`, err.message);
