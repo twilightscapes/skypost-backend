@@ -1326,7 +1326,6 @@ app.post('/api/subscriptions/create-checkout', async (req, res) => {
       success_url: `https://skypost.app/pro/success?license_key=${licenseKey}`,
       cancel_url: 'https://skypost.app/pro/cancel',
       client_reference_id: licenseKey,
-      customer_creation: 'always',
       metadata: {
         license_key: licenseKey,
         device_id: deviceId || 'multi-device',
