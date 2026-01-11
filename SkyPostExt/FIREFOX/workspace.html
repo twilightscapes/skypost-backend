@@ -1670,11 +1670,12 @@
         <div id="editor-video-preview" style="display: none; margin-bottom: 0.75rem; padding: 0.75rem; background: white; border: 1px solid #e5e7eb; border-radius: 6px;">
           <div style="font-size: 0.8rem; font-weight: 500; color: #6b7280; margin-bottom: 0.5rem;">🎥 Video</div>
           <div id="editor-video-preview-content" style="max-width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 4px; margin-bottom: 0.5rem; overflow: hidden;"></div>
-          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem;">
-            <label style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.8rem;">
+          <div style="display: flex; gap: 0.5rem; margin-bottom: 0.5rem; align-items: center;">
+            <label id="editor-video-adblock-label" style="display: flex; align-items: center; gap: 0.4rem; cursor: pointer; font-size: 0.8rem; color: #1f2937; flex: 1;">
               <input type="checkbox" id="editor-video-adblock-checkbox" style="cursor: pointer;">
-              <span>Add #Adblock hashtag</span>
+              <span style="color: #1f2937;">Add #Adblock hashtag</span>
             </label>
+            <span id="editor-video-adblock-pro-badge" class="pro-badge" style="display: none; background: #fbbf24; color: #78350f; padding: 0.25rem 0.5rem; border-radius: 4px; font-size: 0.7rem; font-weight: 600; white-space: nowrap;">PRO</span>
           </div>
           <button type="button" id="editor-remove-video-btn" style="background: #ef4444; color: white; border: none; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer; font-size: 0.8rem; font-weight: 500;">✕ Remove Video</button>
         </div>

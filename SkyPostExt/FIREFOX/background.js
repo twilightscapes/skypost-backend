@@ -379,6 +379,11 @@ async function postScheduledNote(note) {
       finalText = cleanContent.replace(urlPattern, '').trim();
     }
     
+    // Add #Adblock hashtag if enabled for video/YouTube link posts
+    if (note.addAdblockHashtag && !finalText.includes('#Adblock')) {
+      finalText = (finalText ? finalText + ' ' : '') + '#Adblock';
+    }
+    
     // Build post record with plain text
     const postRecord = {
       $type: 'app.bsky.feed.post',

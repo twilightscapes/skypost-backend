@@ -750,10 +750,27 @@ class NotesWorkspace {
       });
     }
 
-    // #Adblock hashtag checkbox
+    // #Adblock hashtag checkbox (Pro only)
     const adblockCheckbox = document.getElementById('editor-video-adblock-checkbox');
     if (adblockCheckbox) {
+      // Check if user is pro
+      const isPro = this.isPro;
+      if (!isPro) {
+        adblockCheckbox.disabled = true;
+        const label = document.getElementById('editor-video-adblock-label');
+        if (label) {
+          label.style.opacity = '0.6';
+          label.style.cursor = 'not-allowed';
+        }
+      }
+      
       adblockCheckbox.addEventListener('change', (e) => {
+        if (!isPro) {
+          e.preventDefault();
+          e.target.checked = false;
+          this.showProModal('Pro Feature', 'Add #Adblock hashtags to your video posts with Pro access!');
+          return;
+        }
         if (this.currentNote) {
           this.currentNote.addAdblockHashtag = e.target.checked;
         }
@@ -1002,6 +1019,12 @@ class NotesWorkspace {
       adblockCheckbox.checked = note.addAdblockHashtag || false;
     }
     
+    // Show pro badge if user is not pro
+    const proBadge = document.getElementById('editor-video-adblock-pro-badge');
+    if (proBadge) {
+      proBadge.style.display = this.isPro ? 'none' : 'inline-block';
+    }
+    
     // Clear Bluesky panel images and previews when switching notes
     const bskyImagePreview = document.getElementById('bsky-image-preview');
     if (bskyImagePreview) {
@@ -1212,11 +1235,22 @@ class NotesWorkspace {
           };
         }
         
-        // Handle YouTube #Adblock checkbox
+        // Handle YouTube #Adblock checkbox (Pro only)
         const adblockCheckbox = document.getElementById('editor-link-adblock-checkbox');
         if (adblockCheckbox) {
+          if (!this.isPro) {
+            adblockCheckbox.disabled = true;
+            adblockCheckbox.parentElement.style.opacity = '0.6';
+            adblockCheckbox.parentElement.style.cursor = 'not-allowed';
+          }
           adblockCheckbox.checked = this.currentNote.addAdblockHashtag || false;
           adblockCheckbox.onchange = (e) => {
+            if (!this.isPro) {
+              e.preventDefault();
+              e.target.checked = false;
+              this.showProModal('Pro Feature', 'Add #Adblock hashtags to your video posts with Pro access!');
+              return;
+            }
             if (this.currentNote) {
               this.currentNote.addAdblockHashtag = e.target.checked;
             }
@@ -2941,10 +2975,10 @@ class BlueskyIntegration {
       const { cleanText, url } = this.detectLinks(textarea.value);
       let postText = url ? cleanText : textarea.value;
 
-      // Add #Adblock hashtag if this is a YouTube video and hashtag isn't already present
+      // Add #Adblock hashtag if enabled for YouTube video posts
       if (url) {
         const isYoutubeVideo = /(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]{11})/.test(url);
-        if (isYoutubeVideo && !postText.includes('#Adblock')) {
+        if (isYoutubeVideo && this.currentNote && this.currentNote.addAdblockHashtag && !postText.includes('#Adblock')) {
           postText += ' #Adblock';
         }
       }
