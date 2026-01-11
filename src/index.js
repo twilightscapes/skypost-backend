@@ -711,17 +711,17 @@ app.get('/', (req, res) => {
       <h2>📥 Download SkyPost</h2>
       <div class="store-links">
         <a href="https://chromewebstore.google.com/detail/hcieghkknbgeimoheickaedjecbdgfic?utm_source=item-share-cb" class="store-badge">
-          <div class="store-icon">🔷</div>
+          <img src="/chrome-store.webp" alt="Chrome Web Store" class="store-icon">
           <div class="store-name">Chrome Web Store</div>
         </a>
         
         <a href="https://addons.mozilla.org/en-US/firefox/addon/skypost/" class="store-badge">
-          <div class="store-icon">🦊</div>
+          <img src="/firefox-store.webp" alt="Firefox Add-ons" class="store-icon">
           <div class="store-name">Firefox Add-ons</div>
         </a>
         
         <span href="https://apps.apple.com/app/skypost" class="store-badge">
-          <div class="store-icon">🧩</div>
+          <img src="/apple-store.webp" alt="Safari App Store" class="store-icon">
           <div class="store-name">Safari App Store</div>
         </span>
       </div>
