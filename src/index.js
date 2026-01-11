@@ -555,7 +555,9 @@ app.get('/', (req, res) => {
     }
     
     .store-icon {
-      font-size: 64px;
+      width: 200px;
+      height: 200px;
+      object-fit: contain;
     }
     
     .store-name {
