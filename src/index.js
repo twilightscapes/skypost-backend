@@ -393,7 +393,7 @@ app.get('/', (req, res) => {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SkyPost - Email Scheduling Extension</title>
+  <title>SkyPost - Bluesky Post Scheduling Extension</title>
   <style>
     * {
       margin: 0;
@@ -925,7 +925,7 @@ app.get('/pro/checkout', (req, res) => {
 <body>
   <div class="checkout-container">
     <h1>🌟 SkyPost Pro</h1>
-    <p class="subtitle">Unlock advanced email scheduling features</p>
+    <p class="subtitle">Unlock advanced post scheduling features</p>
     
     <div class="error" id="error"></div>
     
