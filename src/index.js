@@ -723,7 +723,7 @@ app.get('/', (req, res) => {
         </a>
         
         <span href="https://apps.apple.com/app/skypost" class="store-badge">
-          <img src="/apple-store.webp" alt="Safari App Store" class="store-icon">
+          <img src="/apple-store-soon.webp" alt="Safari App Store" class="store-icon">
           <div class="store-name">Safari App Store</div>
         </span>
       </div>
