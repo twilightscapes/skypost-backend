@@ -422,9 +422,9 @@ app.get('/', (req, res) => {
     }
     
     .logo {
-      max-width: 300px;
+      max-width: 500px;
       height: auto;
-      margin-bottom: 30px;
+      margin-bottom: 20px;
     }
     
     h1 {
@@ -635,7 +635,7 @@ app.get('/', (req, res) => {
       <p class="tagline">Schedule your Bluesky Posts with ease.
       <br />Compose now, send later.</p> 
       <p>Available as a browser extension for Chrome, Firefox, and Safari.</p>
-      
+      <br />
       <div class="cta-section">
         <button onclick="goToCheckout()" class="btn btn-primary">Upgrade to Pro</button>
         <a href="#stores" class="btn btn-secondary">Download for Free</a>
