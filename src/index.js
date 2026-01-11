@@ -364,12 +364,8 @@ Your Pro Benefits:
 - Unlimited scheduled posts
 - Post analytics & engagement tracking
 - Custom link & video cards
-- Priority support
-- 1 year of updates
 
-License expires: 1 year from activation date
-
-Questions? Visit skypost.io or reply to this email.
+Questions? Visit skypost.app or reply to this email.
     `;
     
     await sgMail.send({
@@ -634,8 +630,8 @@ app.get('/', (req, res) => {
       <img src="/SkyPost-Logo.svg" alt="SkyPost Logo" class="logo">
       
   
-      <p class="tagline">Schedule your Bluesky Posts with ease.</p>
-      <p>Compose now, send later.</p> 
+      <p class="tagline">Schedule your Bluesky Posts with ease.
+      <br />Compose now, send later.</p> 
       <p>Available as a browser extension for Chrome, Firefox, and Safari.</p>
       
       <div class="cta-section">
@@ -714,20 +710,20 @@ app.get('/', (req, res) => {
     <div class="container">
       <h2>📥 Download SkyPost</h2>
       <div class="store-links">
-        <a href="https://chrome.google.com/webstore/detail/skypost" class="store-badge">
+        <a href="https://chromewebstore.google.com/detail/hcieghkknbgeimoheickaedjecbdgfic?utm_source=item-share-cb" class="store-badge">
           <div class="store-icon">🔷</div>
           <div class="store-name">Chrome Web Store</div>
         </a>
         
-        <a href="https://addons.mozilla.org/firefox/addon/skypost/" class="store-badge">
+        <a href="https://addons.mozilla.org/en-US/firefox/addon/skypost/" class="store-badge">
           <div class="store-icon">🦊</div>
           <div class="store-name">Firefox Add-ons</div>
         </a>
         
-        <a href="https://apps.apple.com/app/skypost" class="store-badge">
+        <span href="https://apps.apple.com/app/skypost" class="store-badge">
           <div class="store-icon">🧩</div>
           <div class="store-name">Safari App Store</div>
-        </a>
+        </span>
       </div>
     </div>
   </section>
