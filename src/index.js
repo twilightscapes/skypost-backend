@@ -671,14 +671,14 @@ app.get('/', (req, res) => {
       <div class="features-grid">
         <div class="feature-card">
           <div class="feature-icon">⏰</div>
-          <h3>Schedule Emails</h3>
-          <p>Compose your message and schedule it to send at the perfect time.</p>
+          <h3>Schedule Posts</h3>
+          <p>Compose your post and schedule it to post at the perfect time.</p>
         </div>
         
         <div class="feature-card">
           <div class="feature-icon">📧</div>
           <h3>Works Anywhere</h3>
-          <p>Seamlessly integrates with Gmail, Outlook, and other web email services.</p>
+          <p>Seamlessly posts to Bluesky via schedule or manual posting.</p>
         </div>
         
         <div class="feature-card">
@@ -690,13 +690,13 @@ app.get('/', (req, res) => {
         <div class="feature-card">
           <div class="feature-icon">💎</div>
           <h3>Pro Features</h3>
-          <p>Advanced scheduling, templates, and email analytics with SkyPost Pro.</p>
+          <p>Advanced scheduling, templates, and post analytics with SkyPost Pro.</p>
         </div>
         
         <div class="feature-card">
           <div class="feature-icon">🔒</div>
           <h3>Privacy First</h3>
-          <p>Your emails stay secure. We never store your message content.</p>
+          <p>Your posts stay secure. We never store your post content. ALL Data is stored locally on your device.</p>
         </div>
         
         <div class="feature-card">
