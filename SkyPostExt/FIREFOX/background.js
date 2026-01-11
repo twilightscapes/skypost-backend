@@ -162,6 +162,71 @@ try {
   console.error('[Background] Failed to register message listener:', e);
 }
 
+// Catch and retry: Check for overdue posts when service worker starts
+async function catchUpOnScheduledPosts() {
+  console.log('[Background] Running catch-up check for overdue posts...');
+  try {
+    const result = await new Promise((resolve, reject) => {
+      chrome.storage.sync.get(['floatingNotes'], (result) => {
+        if (chrome.runtime.lastError) {
+          reject(chrome.runtime.lastError);
+        } else {
+          resolve(result);
+        }
+      });
+    });
+    
+    const notes = result.floatingNotes || [];
+    const now = Date.now();
+    const RETRY_DELAY_MS = 5 * 60 * 1000; // Retry failed posts after 5 minutes
+    
+    // Find any scheduled notes that should have been posted
+    const overdueNotes = notes.filter(n => 
+      n.status === 'scheduled' && 
+      n.scheduledFor && 
+      (n.scheduledFor - now) <= 0
+    );
+    
+    // Find recently failed posts (failed in last 5 minutes) and retry them
+    const failedNotes = notes.filter(n =>
+      n.status === 'failed' &&
+      n.failedAt &&
+      (now - n.failedAt) < RETRY_DELAY_MS &&
+      n.retryCount < 3 // Limit retries to 3 attempts
+    );
+    
+    const notesToPost = [...overdueNotes, ...failedNotes];
+    
+    if (notesToPost.length > 0) {
+      console.log('[Background] Found', overdueNotes.length, 'overdue and', failedNotes.length, 'failed posts to retry');
+      for (const note of notesToPost) {
+        const fullNote = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({ type: 'getFullNote', noteId: note.id }, (response) => {
+            resolve(response && response.note ? response.note : note);
+          });
+        });
+        
+        // Increment retry count
+        if (!fullNote.retryCount) fullNote.retryCount = 0;
+        fullNote.retryCount++;
+        
+        await postScheduledNote(fullNote);
+      }
+    } else {
+      console.log('[Background] No overdue or failed posts to retry');
+    }
+  } catch (error) {
+    console.error('[Background] Error in catch-up check:', error);
+  }
+}
+
+// Run catch-up on startup (when service worker first activates)
+try {
+  catchUpOnScheduledPosts();
+} catch (e) {
+  console.error('[Background] Failed to run catch-up on startup:', e);
+}
+
 // Set up alarm to check scheduled posts every minute
 try {
   api.alarms.create(SCHEDULE_CHECK_ALARM, { periodInMinutes: 1 });
@@ -576,6 +641,7 @@ async function postScheduledNote(note) {
       console.error('[Background] Post error response:', error);
       note.status = 'failed';
       note.failureReason = `API error (${postResponse.status}): ${error.substring(0, 100)}`;
+      note.failedAt = Date.now(); // Record when it failed for retry logic
     }
   } catch (error) {
     console.error('[Background] CRITICAL ERROR posting scheduled note:', error);
@@ -586,6 +652,7 @@ async function postScheduledNote(note) {
     });
     note.status = 'failed';
     note.failureReason = error.message;
+    note.failedAt = Date.now(); // Record when it failed for retry logic
   }
 }
 

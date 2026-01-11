@@ -3169,12 +3169,24 @@ class BlueskyIntegration {
       const responseData = await postResponse.json();
       console.log('[handlePost] Success! Posted URI:', responseData.uri);
 
+      // Update the current note with post info
+      if (this.currentNote) {
+        this.currentNote.status = 'published';
+        this.currentNote.postUri = responseData.uri;
+        this.currentNote.postedAt = Date.now();
+        await this.db.saveNote(this.currentNote);
+        console.log('[handlePost] Note status updated to published');
+      }
+
       this.showMessage('✅ Posted to Bluesky!', 'success');
       textarea.value = '';
       document.getElementById('bsky-char-count').textContent = '0';
       this.pendingImageData = null;
       const preview = document.getElementById('bsky-image-preview');
       if (preview) preview.style.display = 'none';
+      
+      // Refresh UI to show updated status
+      await this.renderNotesList();
       
       postBtn.disabled = false;
     } catch (error) {
